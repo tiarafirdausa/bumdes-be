@@ -1,0 +1,46 @@
+// backend/routes/authRoutes.js
+const express = require('express');
+const router = express.Router(); 
+const authController = require('../controllers/authController');
+const authMiddleware = require('../middleware/authMiddleware');
+const { userProfileImageUpload } = require('../validation/configMulter')
+const { registerValidation, loginValidation } = require('../validation/authValidation');
+
+router.post(
+    '/register',
+    userProfileImageUpload.single('foto'),
+    // registerValidation,
+    authController.registerUser,
+);
+
+router.post(
+    '/login',
+    loginValidation, 
+    authController.loginUser,);
+
+router.post('/logout', authController.logoutUser);
+router.get('/me', authMiddleware.protect, authController.getLoggedInUser);
+
+router.get('/admin-dashboard', authMiddleware.protect, authMiddleware.authorize('admin'), (req, res) => {
+    res.status(200).json({
+        message: 'Selamat datang di dashboard admin! Anda memiliki akses penuh.',
+        user: req.user 
+    });
+});
+
+router.get(
+    '/users/:id', // Changed from '/user/:id' to '/users/:id' for consistency with /users endpoint
+    authMiddleware.protect,
+    authController.getUserById // This function needs to be created in authController.js
+);
+
+router.put('/users/:id',
+    authMiddleware.protect,
+    userProfileImageUpload.single('foto'), // Multer middleware for single file upload
+    authController.updateUser
+);
+
+router.get('/users', authMiddleware.protect, authController.getUsers);
+router.delete('/users/:id', authMiddleware.protect, authController.deleteUser);
+
+module.exports = router;
