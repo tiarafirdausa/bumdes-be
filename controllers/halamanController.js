@@ -2,8 +2,6 @@ const db = require('../models/db');
 const path = require('path');
 const fs = require('fs'); 
 
-
-// Fungsi untuk membuat halaman baru
 exports.createHalaman = async (req, res) => {
     try {
         const {
@@ -25,29 +23,24 @@ exports.createHalaman = async (req, res) => {
             return res.status(400).json({ error: 'Judul, isi, dan ID pengguna wajib diisi.' });
         }
         
-        const gambarPath = req.file ? `/public/uploads/halaman/${req.file.filename}` : null;
+        const gambarPath = req.file ? `/public/uploads/halaman/${req.file.filename}` : "";
 
-        // Auto-generate judul_seo jika tidak disediakan
         let judul_seo = req.body.judul_seo;
         if (!judul_seo) {
             judul_seo = judul.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
         }
 
-        // Auto-generate meta_title, meta_desc, meta_keyw jika tidak disediakan atau kosong
         const finalMetaTitle = meta_title !== undefined && meta_title !== '' ? meta_title : judul;
         const finalMetaDesc = meta_desc !== undefined && meta_desc !== '' ? meta_desc : judul;
         const finalMetaKeyw = meta_keyw !== undefined && meta_keyw !== '' ? meta_keyw : judul;
 
-        // Auto-generate hari, tanggal, jam
         const now = new Date();
         const hari = now.toLocaleDateString('id-ID', { weekday: 'long' }); 
         const tanggal = now.toISOString().slice(0, 10);
         const jam = now.toTimeString().slice(0, 8); 
 
-        // Default hits ke 0
         const hits = 0;
 
-        // Masukkan halaman baru ke database
         const [result] = await db.query(
             'INSERT INTO halaman (judul, judul_seo, meta_title, meta_desc, meta_keyw, isi, id_modul, gambar, hari, tanggal, jam, id_user, hits) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
             [
@@ -58,7 +51,7 @@ exports.createHalaman = async (req, res) => {
                 finalMetaKeyw,
                 isi,
                 id_modul,
-                gambarPath || null,
+                gambarPath,
                 hari,
                 tanggal,
                 jam,
@@ -97,57 +90,6 @@ exports.createHalaman = async (req, res) => {
     }
 };
 
-// Fungsi untuk mendapatkan semua halaman
-exports.getHalamans = async (req, res) => {
-    try {
-        const [halamans] = await db.query(
-            `SELECT
-                h.id_halaman,
-                h.judul,
-                h.judul_seo,
-                h.isi,
-                h.id_modul,
-                h.gambar,
-                h.hari,
-                h.tanggal,
-                h.jam,
-                h.id_user,
-                h.hits,
-                u.nama_lengkap AS nama_penulis
-            FROM
-                halaman h
-            LEFT JOIN
-                user u ON h.id_user = u.id_user
-            ORDER BY
-                h.tanggal DESC, h.jam DESC`
-        );
-        res.status(200).json(halamans);
-    } catch (error) {
-        console.error('Error fetching halamans:', error);
-        res.status(500).json({ error: 'Gagal mengambil daftar halaman', details: error.message });
-    }
-};
-
-// Fungsi untuk mendapatkan halaman berdasarkan ID
-exports.getHalamanById = async (req, res) => {
-    try {
-        const { id } = req.params;
-
-        const [halaman] = await db.query('SELECT * FROM halaman WHERE id_halaman = ?', [id]);
-
-        if (halaman.length === 0) {
-            return res.status(404).json({ error: 'Halaman tidak ditemukan' });
-        }
-
-        await db.query('UPDATE halaman SET hits = hits + 1 WHERE id_halaman = ?', [id]);
-
-        res.status(200).json(halaman[0]);
-    } catch (error) {
-        console.error('Error fetching halaman by ID:', error);
-        res.status(500).json({ error: 'Gagal mengambil halaman', details: error.message });
-    }
-};
-
 // Fungsi untuk memperbarui halaman
 exports.updateHalaman = async (req, res) => {
     try {
@@ -164,17 +106,15 @@ exports.updateHalaman = async (req, res) => {
             id_user
         } = req.body;
 
-        const newGambarPath = req.file ? `/public/uploads/halaman/${req.file.filename}` : undefined; // Path gambar baru jika diunggah
-
+        const newGambarPath = req.file ? `/public/uploads/halaman/${req.file.filename}` : undefined; 
+        
         let updateFields = [];
         let updateValues = [];
         let responseBody = {};
 
-        // Ambil path gambar lama dari database
         const [oldHalaman] = await db.query('SELECT gambar FROM halaman WHERE id_halaman = ?', [id]);
         const oldGambarPath = oldHalaman.length > 0 ? oldHalaman[0].gambar : null;
 
-        // Logika untuk judul dan judul_seo (sama seperti sebelumnya)
         if (judul !== undefined) {
             const [existingJudul] = await db.query('SELECT id_halaman FROM halaman WHERE judul = ? AND id_halaman != ?', [judul, id]);
             if (existingJudul.length > 0) {
@@ -189,11 +129,11 @@ exports.updateHalaman = async (req, res) => {
             updateValues.push(judul);
         }
 
-        if (judul !== undefined && !req.body.hasOwnProperty('judul_seo')) {
+        if (judul !== undefined && !('judul_seo' in req.body)) {
             const newJudulSeo = judul.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
             updateFields.push('judul_seo = ?');
             updateValues.push(newJudulSeo);
-        } else if (req.body.hasOwnProperty('judul_seo')) {
+        } else if ('judul_seo' in req.body) {
             const [existingJudulSeo] = await db.query('SELECT id_halaman FROM halaman WHERE judul_seo = ? AND id_halaman != ?', [judul_seo, id]);
             if (existingJudulSeo.length > 0) {
                 if (req.file) { 
@@ -210,7 +150,7 @@ exports.updateHalaman = async (req, res) => {
         if (meta_title !== undefined) { updateFields.push('meta_title = ?'); updateValues.push(meta_title || null); }
         if (meta_desc !== undefined) { updateFields.push('meta_desc = ?'); updateValues.push(meta_desc || null); }
         if (meta_keyw !== undefined) { updateFields.push('meta_keyw = ?'); updateValues.push(meta_keyw || null); }
-        if (isi !== undefined) { updateFields.push('isi = ?'); updateValues.push(isi); } // Pastikan ini tidak kosong juga
+        if (isi !== undefined) { updateFields.push('isi = ?'); updateValues.push(isi); } 
         if (id_modul !== undefined) { updateFields.push('id_modul = ?'); updateValues.push(id_modul || null); }
         if (id_user !== undefined) { updateFields.push('id_user = ?'); updateValues.push(id_user); }
 
@@ -226,7 +166,7 @@ exports.updateHalaman = async (req, res) => {
                     });
                 }
             }
-        } else if (gambarFromBody !== undefined && (gambarFromBody === null || gambarFromBody === '')) { // Frontend secara eksplisit ingin menghapus gambar
+        } else if (gambarFromBody !== undefined && (gambarFromBody === null || gambarFromBody === '')) { 
             updateFields.push('gambar = ?');
             updateValues.push(null);
             responseBody.image_cleared = true; 
@@ -274,6 +214,48 @@ exports.updateHalaman = async (req, res) => {
         }
     }
 };
+
+// Fungsi untuk mendapatkan semua halaman
+exports.getHalamans = async (req, res) => {
+    try {
+        const [halamans] = await db.query(
+            `SELECT
+                h.*,   
+                u.nama_lengkap AS nama_penulis
+            FROM
+                halaman h
+            LEFT JOIN
+                user u ON h.id_user = u.id_user
+            ORDER BY
+                h.tanggal DESC, h.jam DESC`
+        );
+        res.status(200).json(halamans);
+    } catch (error) {
+        console.error('Error fetching halamans:', error);
+        res.status(500).json({ error: 'Gagal mengambil daftar halaman', details: error.message });
+    }
+};
+
+// Fungsi untuk mendapatkan halaman berdasarkan ID
+exports.getHalamanById = async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        const [halaman] = await db.query('SELECT * FROM halaman WHERE id_halaman = ?', [id]);
+
+        if (halaman.length === 0) {
+            return res.status(404).json({ error: 'Halaman tidak ditemukan' });
+        }
+
+        await db.query('UPDATE halaman SET hits = hits + 1 WHERE id_halaman = ?', [id]);
+
+        res.status(200).json(halaman[0]);
+    } catch (error) {
+        console.error('Error fetching halaman by ID:', error);
+        res.status(500).json({ error: 'Gagal mengambil halaman', details: error.message });
+    }
+};
+
 
 // Fungsi untuk menghapus halaman
 exports.deleteHalaman = async (req, res) => {

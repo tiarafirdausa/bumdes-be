@@ -16,8 +16,6 @@ exports.createArtikel = async (req, res) => {
             id_user
         } = req.body; 
 
-        const gambarPath = req.file ? `/public/uploads/artikel/${req.file.filename}` : null; 
-
         if (!judul || !isi || !kategori || !id_user) {
             if (req.file) {
                 fs.unlink(req.file.path, (unlinkErr) => {
@@ -26,17 +24,23 @@ exports.createArtikel = async (req, res) => {
             }
             return res.status(400).json({ error: 'Judul, isi, kategori, dan ID pengguna wajib diisi.' });
         }
+        
+        const gambarPath = req.file ? `/public/uploads/artikel/${req.file.filename}` : ""; 
 
         let judul_seo = req.body.judul_seo;
         if (!judul_seo) {
             judul_seo = judul.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
         }
 
+        const finalMetaTitle = meta_title !== undefined && meta_title !== '' ? meta_title : judul;
+        const finalMetaDesc = meta_desc !== undefined && meta_desc !== '' ? meta_desc : judul;
+        const finalMetaKeyw = meta_keyw !== undefined && meta_keyw !== '' ? meta_keyw : judul;
 
         const now = new Date();
         const hari = now.toLocaleDateString('id-ID', { weekday: 'long' });
         const tanggal = now.toISOString().slice(0, 10);
         const jam = now.toTimeString().slice(0, 8);
+
         const hits = 0;
 
         const [result] = await db.query(
@@ -44,9 +48,9 @@ exports.createArtikel = async (req, res) => {
             [
                 judul,
                 judul_seo,
-                meta_title || null,
-                meta_desc || null,
-                meta_keyw || null,
+                finalMetaTitle,
+                finalMetaDesc,
+                finalMetaKeyw,
                 isi,
                 gambarPath,
                 hari,
@@ -64,9 +68,9 @@ exports.createArtikel = async (req, res) => {
             id_artikel: result.insertId,
             judul,
             judul_seo,
-            meta_title,
-            meta_desc,
-            meta_keyw,
+            meta_title: finalMetaTitle,
+            meta_desc: finalMetaDesc,
+            meta_keyw: finalMetaKeyw,
             isi,
             gambar: gambarPath,
             hari,
@@ -107,7 +111,8 @@ exports.updateArtikel = async (req, res) => {
             kategori,
             tag,
             display,
-            gambar 
+            gambar: gambarFromBody,
+            id_user 
         } = req.body;
 
         const newGambarPath = req.file ? `/public/uploads/artikel/${req.file.filename}` : undefined;
@@ -123,7 +128,7 @@ exports.updateArtikel = async (req, res) => {
             const [existingJudul] = await db.query('SELECT id_artikel FROM artikel WHERE judul = ? AND id_artikel != ?', [judul, id]);
             if (existingJudul.length > 0) {
                 if (req.file) {
-                    fs.unlink(req.file.path, (unlinkErr) => { // Use async unlink
+                    fs.unlink(req.file.path, (unlinkErr) => { 
                         if (unlinkErr) console.error('Error deleting uploaded file due to duplicate title:', unlinkErr);
                     });
                 }
@@ -133,12 +138,11 @@ exports.updateArtikel = async (req, res) => {
             updateValues.push(judul);
         }
 
-        if (judul !== undefined && !req.body.hasOwnProperty('judul_seo')) {
+        if (judul !== undefined && !('judul_seo' in req.body)) {
             const newJudulSeo = judul.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
             updateFields.push('judul_seo = ?');
             updateValues.push(newJudulSeo);
         } else if (req.body.hasOwnProperty('judul_seo')) {
-             // Add check for duplicate judul_seo here as well if it's meant to be unique
             const [existingJudulSeo] = await db.query('SELECT id_artikel FROM artikel WHERE judul_seo = ? AND id_artikel != ?', [judul_seo, id]);
             if (existingJudulSeo.length > 0) {
                 if (req.file) {
@@ -161,34 +165,32 @@ exports.updateArtikel = async (req, res) => {
         if (display !== undefined) { updateFields.push('display = ?'); updateValues.push(display); }
         if (id_user !== undefined) { updateFields.push('id_user = ?'); updateValues.push(id_user); }
 
-        // Logika untuk gambar:
-        if (req.file) { // New image uploaded
+        if (req.file) { 
             updateFields.push('gambar = ?');
             updateValues.push(newGambarPath);
             if (oldGambarPath && oldGambarPath.startsWith('/public/uploads/artikel')) {
                 const fullOldPath = path.join(__dirname, '..', oldGambarPath);
                 if (fs.existsSync(fullOldPath)) {
-                    fs.unlink(fullOldPath, (unlinkErr) => { // Use async unlink
+                    fs.unlink(fullOldPath, (unlinkErr) => { 
                         if (unlinkErr) console.error('Gagal menghapus gambar lama:', fullOldPath, unlinkErr);
                         else console.log('Gambar lama dihapus:', fullOldPath);
                     });
                 }
             }
-        } else if (gambar !== undefined && (gambar === null || gambar === '')) { // Image explicitly cleared by frontend
+        } else if (gambarFromBody !== undefined && (gambarFromBody === null || gambarFromBody === '')) { // Image explicitly cleared by frontend
             updateFields.push('gambar = ?');
             updateValues.push(null);
             responseBody.image_cleared = true;
             if (oldGambarPath && oldGambarPath.startsWith('/public/uploads/artikel')) {
                 const fullOldPath = path.join(__dirname, '..', oldGambarPath);
                 if (fs.existsSync(fullOldPath)) {
-                    fs.unlink(fullOldPath, (unlinkErr) => { // Use async unlink
+                    fs.unlink(fullOldPath, (unlinkErr) => {
                         if (unlinkErr) console.error('Gagal menghapus gambar lama:', fullOldPath, unlinkErr);
                         else console.log('Gambar lama dihapus:', fullOldPath);
                     });
                 }
             }
         }
-
 
         if (updateFields.length === 0) {
             if (!req.file) {
@@ -203,7 +205,7 @@ exports.updateArtikel = async (req, res) => {
 
         if (result.affectedRows === 0) {
             if (req.file) {
-                fs.unlink(req.file.path, (unlinkErr) => { // Use async unlink
+                fs.unlink(req.file.path, (unlinkErr) => { 
                     if (unlinkErr) console.error('Error deleting uploaded file after no DB change:', unlinkErr);
                 });
             }
@@ -214,7 +216,7 @@ exports.updateArtikel = async (req, res) => {
     } catch (error) {
         console.error('Error updating artikel:', error);
         if (req.file) {
-            fs.unlink(req.file.path, (unlinkErr) => { // Use async unlink
+            fs.unlink(req.file.path, (unlinkErr) => { 
                 if (unlinkErr) console.error('Error deleting uploaded file on DB failure:', unlinkErr);
             });
         }
@@ -233,11 +235,14 @@ exports.getArtikels = async (req, res) => {
         const [artikels] = await db.query(`
             SELECT
                 a.*,
-                u.nama_lengkap AS nama_penulis
+                u.nama_lengkap AS nama_penulis,
+                k.kategori AS kategori
             FROM
                 artikel a
             JOIN
                 user u ON a.id_user = u.id_user
+            JOIN
+                kategori k ON a.kategori = k.id_kategori
             ORDER BY a.tanggal DESC, a.jam DESC
         `);
         res.status(200).json(artikels);
@@ -246,6 +251,7 @@ exports.getArtikels = async (req, res) => {
         res.status(500).json({ error: 'Gagal mengambil daftar artikel', details: error.message });
     }
 };
+
 
 // --- Fungsi untuk mendapatkan artikel berdasarkan ID ---
 exports.getArtikelById = async (req, res) => {
@@ -271,10 +277,8 @@ exports.getArtikelById = async (req, res) => {
 exports.deleteArtikel = async (req, res) => {
     try {
         const { id } = req.params;
-
         const [artikel] = await db.query('SELECT gambar FROM artikel WHERE id_artikel = ?', [id]);
         const gambarPathToDelete = artikel.length > 0 ? artikel[0].gambar : null;
-
         const [result] = await db.query('DELETE FROM artikel WHERE id_artikel = ?', [id]);
 
         if (result.affectedRows === 0) {
