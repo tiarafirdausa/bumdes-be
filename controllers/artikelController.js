@@ -232,19 +232,32 @@ exports.updateArtikel = async (req, res) => {
 // --- Fungsi untuk mendapatkan semua artikel ---
 exports.getArtikels = async (req, res) => {
     try {
-        const [artikels] = await db.query(`
+        // Mendapatkan parameter kategori dari query string (e.g., /artikel?kategori=29)
+        const { kategori } = req.query; // Perubahan di sini: ambil kategori dari query
+
+        let query = `
             SELECT
                 a.*,
                 u.nama_lengkap AS nama_penulis,
-                k.kategori AS kategori
+                k.kategori AS kategori_nama, -- Ubah nama alias untuk menghindari konflik dengan kolom a.kategori
+                k.kategori_seo AS kategori_seo
             FROM
                 artikel a
             JOIN
                 user u ON a.id_user = u.id_user
             JOIN
                 kategori k ON a.kategori = k.id_kategori
-            ORDER BY a.tanggal DESC, a.jam DESC
-        `);
+        `;
+        const queryParams = [];
+
+        if (kategori) {
+            query += ` WHERE a.kategori = ?`; // Menambahkan kondisi WHERE jika kategori diberikan
+            queryParams.push(kategori);
+        }
+
+        query += ` ORDER BY a.tanggal DESC, a.jam DESC`; // Selalu urutkan
+
+        const [artikels] = await db.query(query, queryParams);
         res.status(200).json(artikels);
     } catch (error) {
         console.error('Error fetching artikels:', error);
