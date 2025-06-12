@@ -10,7 +10,8 @@ const menuRoute = require('./routes/menuRoute');
 const kategoriRoute = require('./routes/kategoriRoute');
 const artikelRoute = require('./routes/artikelRoute');
 const halamanRoute = require('./routes/halamanRoute');
-const dashboardRoute = require('./routes/dashboardRoute'); // Jika ada route dashboard
+const dashboardRoute = require('./routes/dashboardRoute'); 
+const komentarRoute = require('./routes/komentarRoute')
 const { loginLimiter, registerLimiter } = require('./validation/rateLimiters');
 const generateCsrfToken = require('./middleware/csrfMiddleware');
 
@@ -42,14 +43,13 @@ app.get('/auth/csrf-token', generateCsrfToken, (req, res) => {
 app.use('/auth/login', loginLimiter);
 app.use('/auth/register', registerLimiter);
 
-app.use(generateCsrfToken);
-
 app.use('/menu', menuRoute);
 app.use('/auth', authRoute);
 app.use('/kategori', kategoriRoute);
-app.use('/artikel', generateCsrfToken, artikelRoute);
+app.use('/artikel',  artikelRoute);
 app.use('/halaman', halamanRoute);
-app.use('/dashboard', dashboardRoute);
+app.use('/dashboard', generateCsrfToken, dashboardRoute);
+app.use('/komentar', komentarRoute)
 
 app.use((err, req, res, next) => {
     if (err.message === 'CSRF token tidak valid atau tidak ada.') {

@@ -239,7 +239,7 @@ exports.getArtikels = async (req, res) => {
             SELECT
                 a.*,
                 u.nama_lengkap AS nama_penulis,
-                k.kategori AS kategori_nama, -- Ubah nama alias untuk menghindari konflik dengan kolom a.kategori
+                k.kategori AS kategori_nama,
                 k.kategori_seo AS kategori_seo
             FROM
                 artikel a
@@ -266,25 +266,46 @@ exports.getArtikels = async (req, res) => {
 };
 
 
-// --- Fungsi untuk mendapatkan artikel berdasarkan ID ---
 exports.getArtikelById = async (req, res) => {
     try {
         const { id } = req.params;
+        const query = `
+            SELECT
+                a.*,
+                u.nama_lengkap AS nama_penulis,
+                k.kategori AS kategori_nama,
+                k.kategori_seo AS kategori_seo
+            FROM
+                artikel a
+            JOIN
+                user u ON a.id_user = u.id_user
+            JOIN
+                kategori k ON a.kategori = k.id_kategori
+            WHERE a.id_artikel = ?
+        `;
 
-        const [artikel] = await db.query('SELECT * FROM artikel WHERE id_artikel = ?', [id]);
+        const [artikel] = await db.query(query, [id]);
+        
 
         if (artikel.length === 0) {
             return res.status(404).json({ error: 'Artikel tidak ditemukan' });
         }
 
+        // Ini akan mengupdate kolom hits, tidak perlu diubah
         await db.query('UPDATE artikel SET hits = hits + 1 WHERE id_artikel = ?', [id]);
 
+                console.log("DEBUG BACKEND: Artikel yang akan dikirim:", artikel[0]); // <--- TAMBAHKAN INI
+
+
+        // Mengembalikan artikel pertama dari array hasil
         res.status(200).json(artikel[0]);
+        console.log(artikel[0])
     } catch (error) {
         console.error('Error fetching artikel by ID:', error);
         res.status(500).json({ error: 'Gagal mengambil artikel', details: error.message });
     }
 };
+
 
 // --- Fungsi untuk menghapus artikel ---
 exports.deleteArtikel = async (req, res) => {

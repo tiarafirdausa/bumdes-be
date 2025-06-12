@@ -9,7 +9,7 @@ const { registerValidation, loginValidation } = require('../validation/authValid
 router.post(
     '/register',
     userProfileImageUpload.single('foto'),
-    // registerValidation,
+    registerValidation,
     authController.registerUser,
 );
 
