@@ -42,7 +42,6 @@ exports.addComment = async (req, res) => {
 };
 
 exports.getComments = async (req, res) => {
-    
     try {
         const { id } = req.params;
         const query = `
@@ -56,5 +55,46 @@ exports.getComments = async (req, res) => {
     } catch (error) {
         console.error('Error fetching comments:', error);
         res.status(500).json({ error: 'Gagal mengambil daftar komentar', details: error.message });
+    }
+};
+
+exports.getAllComments = async (req, res) => {
+    try {
+        const [komentar] = await db.query(`
+            SELECT 
+                k.*,
+                a.judul as judul
+            FROM 
+                komentar  k
+            LEFT JOIN
+                artikel a ON k.id_artikel = a.id_artikel
+            ORDER BY 
+                k.tanggal DESC
+            `);
+        res.status(200).json(komentar);
+    } catch (error) {
+        console.error('Error fetching komentar:', error);
+        res.status(500).json({ error: 'Gagal mengambil daftar komentar', details: error.message });
+    }
+};
+
+exports.deleteComment = async (req, res) => {
+    const { id } = req.params; 
+
+    try {
+        const query = `
+            DELETE FROM komentar
+            WHERE id_komentar = ?
+        `;
+        const [result] = await db.query(query, [id]);
+
+        if (result.affectedRows === 1) {
+            res.status(200).json({ message: 'Komentar berhasil dihapus.' });
+        } else {
+            res.status(404).json({ error: 'Komentar tidak ditemukan atau gagal dihapus.' });
+        }
+    } catch (error) {
+        console.error('Error deleting comment:', error);
+        res.status(500).json({ error: 'Terjadi kesalahan server saat menghapus komentar', details: error.message });
     }
 };
