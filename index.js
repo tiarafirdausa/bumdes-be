@@ -3,6 +3,7 @@ const cors = require('cors');
 const db = require('./models/db');
 const cookieParser = require('cookie-parser');
 const helmet = require('helmet');
+const path = require('path');
 require('dotenv').config();
 
 const authRoute = require('./routes/authRoute');
@@ -33,7 +34,7 @@ app.use(cookieParser());
 app.use(helmet()); 
 app.disable('x-powered-by');
 
-app.use('/public/uploads', express.static('public/uploads'));
+app.use('/uploads', express.static(path.join(__dirname, 'public', 'uploads')));
 
 app.get('/auth/csrf-token', generateCsrfToken, (req, res) => {
     res.json({ csrfToken: req.csrfToken });

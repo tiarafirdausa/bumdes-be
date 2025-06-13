@@ -17,7 +17,6 @@ exports.addComment = async (req, res) => {
         const values = [nama, email, komentar, id_artikel];
 
         const [result] = await db.query(query, values);
-        console.log(result)
 
         if (result.affectedRows === 1) {
             // Mengembalikan komentar yang baru ditambahkan (atau sebagian datanya)

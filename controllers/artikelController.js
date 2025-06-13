@@ -233,7 +233,7 @@ exports.updateArtikel = async (req, res) => {
 exports.getArtikels = async (req, res) => {
     try {
         // Mendapatkan parameter kategori dari query string (e.g., /artikel?kategori=29)
-        const { kategori } = req.query; // Perubahan di sini: ambil kategori dari query
+        const { kategori, limit } = req.query; // Perubahan di sini: ambil kategori dari query
 
         let query = `
             SELECT
@@ -256,6 +256,12 @@ exports.getArtikels = async (req, res) => {
         }
 
         query += ` ORDER BY a.tanggal DESC, a.jam DESC`; // Selalu urutkan
+
+        if (limit) {
+            // If a limit is provided, add it to the query
+            query += ` LIMIT ?`;
+            queryParams.push(parseInt(limit)); // Ensure limit is an integer
+        }
 
         const [artikels] = await db.query(query, queryParams);
         res.status(200).json(artikels);
@@ -285,21 +291,11 @@ exports.getArtikelById = async (req, res) => {
         `;
 
         const [artikel] = await db.query(query, [id]);
-        
-
         if (artikel.length === 0) {
             return res.status(404).json({ error: 'Artikel tidak ditemukan' });
         }
-
-        // Ini akan mengupdate kolom hits, tidak perlu diubah
         await db.query('UPDATE artikel SET hits = hits + 1 WHERE id_artikel = ?', [id]);
-
-                console.log("DEBUG BACKEND: Artikel yang akan dikirim:", artikel[0]); // <--- TAMBAHKAN INI
-
-
-        // Mengembalikan artikel pertama dari array hasil
         res.status(200).json(artikel[0]);
-        console.log(artikel[0])
     } catch (error) {
         console.error('Error fetching artikel by ID:', error);
         res.status(500).json({ error: 'Gagal mengambil artikel', details: error.message });
