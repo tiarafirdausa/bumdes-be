@@ -389,7 +389,7 @@ exports.getArtikels = async (req, res) => {
 
 exports.getArtikelById = async (req, res) => {
   try {
-    const { id } = req.params;
+    const { id } = req.params; 
     const query = `
             SELECT
                 a.*,
