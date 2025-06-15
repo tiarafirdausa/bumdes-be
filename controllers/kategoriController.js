@@ -94,6 +94,27 @@ exports.getKategoriById = async (req, res) => {
   }
 };
 
+exports.getKategoriBySeo = async (req, res) => {
+  try {
+    const { kategori_seo } = req.params;
+    const [kategori] = await db.query(
+      "SELECT id_kategori, kategori, kategori_seo FROM kategori WHERE kategori_seo = ?",
+      [kategori_seo]
+    );
+
+    if (kategori.length === 0) {
+      return res.status(404).json({ error: "Kategori tidak ditemukan" });
+    }
+
+    res.status(200).json(kategori[0]);
+  } catch (error) {
+    console.error("Error fetching kategori by seo:", error);
+    res
+      .status(500)
+      .json({ error: "Gagal mengambil kategori", details: error.message });
+  }
+};
+
 // Fungsi untuk memperbarui kategori
 exports.updateKategori = async (req, res) => {
   try {

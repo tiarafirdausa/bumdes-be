@@ -5,6 +5,7 @@ const { halamanImageUpload } = require('../validation/configMulter');
 
 router.post('/', halamanImageUpload.single('gambar'), halamanController.createHalaman); 
 router.get('/', halamanController.getHalamans);
+router.get('/:judul_seo', halamanController.getHalamanByJudulSeo);
 router.get('/:id', halamanController.getHalamanById);
 router.put('/:id', halamanImageUpload.single('gambar'), halamanController.updateHalaman);
 router.delete('/:id', halamanController.deleteHalaman);

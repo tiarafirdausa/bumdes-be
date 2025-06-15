@@ -28,7 +28,28 @@ exports.createMenu = async (req, res) => {
 
 exports.getMenu = async (req, res) => {
   try {
-    const [rows] = await db.query("SELECT * FROM menu ORDER BY urut ASC");
+    const [rows] = await db.query(`
+      SELECT
+          m.id_menu,
+          m.judul,
+          m.kategori_menu,
+          m.induk,
+          m.jenis_link,
+          m.urut,
+          CASE
+              WHEN m.jenis_link = 'halaman' THEN h.judul_seo    
+              WHEN m.jenis_link = 'kategori' THEN k.kategori_seo 
+              ELSE m.link                                     
+          END AS link_final                                   
+      FROM
+          menu m
+      LEFT JOIN
+          halaman h ON m.link = h.id_halaman AND m.jenis_link = 'halaman'
+      LEFT JOIN
+          kategori k ON m.link = k.id_kategori AND m.jenis_link = 'kategori' -- Join baru untuk kategori
+      ORDER BY
+          m.urut ASC
+    `);
     res.status(200).json(rows);
   } catch (error) {
     console.error("Kesalahan saat mengambil menu:", error);

@@ -354,7 +354,8 @@ exports.getArtikels = async (req, res) => {
                 a.*,
                 u.nama_lengkap AS nama_penulis,
                 k.kategori AS kategori_nama,
-                k.kategori_seo AS kategori_seo
+                k.kategori_seo AS kategori_seo,
+                k.id_kategori as id_kategori
             FROM
                 artikel a
             JOIN
@@ -414,6 +415,35 @@ exports.getArtikelById = async (req, res) => {
     res.status(200).json(artikel[0]);
   } catch (error) {
     console.error("Error fetching artikel by ID:", error);
+    res
+      .status(500)
+      .json({ error: "Gagal mengambil artikel", details: error.message });
+  }
+};
+
+exports.getArtikelByJudulSeo = async (req, res) => {
+  try {
+    const { judul_seo } = req.params;
+
+    const [artikel] = await db.query(
+      `SELECT a.*, k.kategori_seo AS kategori_seo
+       FROM artikel a 
+       LEFT JOIN kategori k ON a.kategori = k.id_kategori 
+       WHERE a.judul_seo = ?`,
+      [judul_seo]
+    );
+
+    if (artikel.length === 0) {
+      return res.status(404).json({ error: "Artikel tidak ditemukan" });
+    }
+
+    await db.query("UPDATE artikel SET hits = hits + 1 WHERE judul_seo = ?", [
+      judul_seo,
+    ]);
+
+    res.status(200).json(artikel[0]);
+  } catch (error) {
+    console.error("Error fetching artikel by judul_seo:", error);
     res
       .status(500)
       .json({ error: "Gagal mengambil artikel", details: error.message });

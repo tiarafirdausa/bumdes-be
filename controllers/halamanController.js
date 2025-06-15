@@ -126,7 +126,7 @@ exports.updateHalaman = async (req, res) => {
     } = req.body;
 
     const newGambarPath = req.file
-      ? `/public/uploads/halaman/${req.file.filename}`
+      ? `/uploads/halaman/${req.file.filename}`
       : undefined;
 
     let updateFields = [];
@@ -375,6 +375,29 @@ exports.getHalamanById = async (req, res) => {
     res.status(200).json(halaman[0]);
   } catch (error) {
     console.error("Error fetching halaman by ID:", error);
+    res
+      .status(500)
+      .json({ error: "Gagal mengambil halaman", details: error.message });
+  }
+};
+
+exports.getHalamanByJudulSeo = async (req, res) => {
+  try {
+    const { judul_seo } = req.params;
+    const [halaman] = await db.query(
+      "SELECT * FROM halaman WHERE judul_seo = ?", 
+      [judul_seo]
+    );
+    if (halaman.length === 0) {
+      return res.status(404).json({ error: "Halaman tidak ditemukan" });
+    }
+    await db.query("UPDATE halaman SET hits = hits + 1 WHERE judul_seo = ?", [
+      judul_seo,
+    ]);
+
+    res.status(200).json(halaman[0]);
+  } catch (error) {
+    console.error("Error fetching halaman by judul_seo:", error);
     res
       .status(500)
       .json({ error: "Gagal mengambil halaman", details: error.message });

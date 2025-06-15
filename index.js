@@ -52,7 +52,7 @@ app.use("/artikel", artikelRoute);
 app.use("/halaman", halamanRoute);
 app.use("/dashboard", generateCsrfToken, dashboardRoute);
 app.use("/komentar", komentarRoute);
-app.use("/setting", settingRoute);
+app.use("/settings", settingRoute);
 
 app.use((err, req, res, next) => {
   if (err.message === "CSRF token tidak valid atau tidak ada.") {
