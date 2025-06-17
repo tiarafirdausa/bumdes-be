@@ -9,6 +9,5 @@ router.get('/', artikelController.getArtikels);
 router.get('/id/:id', artikelController.getArtikelById);
 router.get('/:judul_seo', artikelController.getArtikelByJudulSeo);
 router.put('/id/:id', articleImageUpload.single('gambar'), artikelController.updateArtikel);
-router.delete('/id/:id', artikelController.deleteArtikel);
-
+router.delete('/:id', artikelController.deleteArtikel);
 module.exports = router;

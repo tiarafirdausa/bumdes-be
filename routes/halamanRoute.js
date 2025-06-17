@@ -8,6 +8,6 @@ router.get('/', halamanController.getHalamans);
 router.get('/id/:id', halamanController.getHalamanById);
 router.get('/:judul_seo', halamanController.getHalamanByJudulSeo);
 router.put('/id/:id', halamanImageUpload.single('gambar'), halamanController.updateHalaman);
-router.delete('/id/:id', halamanController.deleteHalaman);
+router.delete('/:id', halamanController.deleteHalaman);
 
 module.exports = router;
