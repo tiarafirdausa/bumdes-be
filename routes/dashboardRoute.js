@@ -15,6 +15,7 @@ router.get("/counts", async (req, res) => {
       "SELECT COUNT(*) AS count FROM kategori"
     );
     const [menuResult] = await db.query("SELECT COUNT(*) AS count FROM menu");
+    const [socialResult] = await db.query("SELECT COUNT(*) AS count FROM md_social");
     const [komentarResult] = await db.query(
       "SELECT COUNT(*) AS count FROM komentar"
     );
@@ -24,6 +25,7 @@ router.get("/counts", async (req, res) => {
       halaman: halamanResult[0].count,
       kategori: kategoriResult[0].count,
       menu: menuResult[0].count,
+      social: socialResult[0].count,
       komentar: komentarResult[0].count,
       users: userResult[0].count,
     };

@@ -389,7 +389,7 @@ exports.getArtikels = async (req, res) => {
 
 exports.getArtikelById = async (req, res) => {
   try {
-    const { id } = req.params; 
+    const { id } = req.params;
     const query = `
             SELECT
                 a.*,
@@ -426,9 +426,15 @@ exports.getArtikelByJudulSeo = async (req, res) => {
     const { judul_seo } = req.params;
 
     const [artikel] = await db.query(
-      `SELECT a.*, k.kategori_seo AS kategori_seo
+      `SELECT
+        a.*,
+        u.nama_lengkap AS nama_penulis,
+        k.kategori AS kategori_nama,
+        k.kategori_seo AS kategori_seo
        FROM artikel a 
-       LEFT JOIN kategori k ON a.kategori = k.id_kategori 
+       JOIN
+                user u ON a.id_user = u.id_user
+       JOIN kategori k ON a.kategori = k.id_kategori 
        WHERE a.judul_seo = ?`,
       [judul_seo]
     );
