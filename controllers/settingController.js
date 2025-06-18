@@ -1,5 +1,5 @@
 // controllers/settingController.js
-const db = require("../models/db");
+const db = require("../models/db"); // Sesuaikan path ini ke file koneksi DB Anda
 const path = require("path");
 const fs = require("fs");
 
@@ -35,8 +35,9 @@ exports.updateSettings = async (req, res) => {
       powerurl,
       email,
       secret_key,
-      "data-sitekey": data_sitekey,
+      "data-sitekey": data_sitekey, 
       googleverification,
+      theme, 
     } = req.body;
 
     let responseBody = {};
@@ -50,11 +51,20 @@ exports.updateSettings = async (req, res) => {
     });
 
     const updateSingleSetting = async (parameterName, newValue, oldValue) => {
-      if (newValue !== undefined && newValue !== oldValue) {
+      let valueToStore = newValue;
+
+      if (newValue === undefined) {
+        return; 
+      }
+
+      if (valueToStore !== oldValue) {
+        console.log(`Updating setting: ${parameterName} from '${oldValue}' to '${valueToStore}'`);
         await db.query("UPDATE setting SET nilai = ? WHERE parameter = ?", [
-          newValue,
+          valueToStore,
           parameterName,
         ]);
+      } else {
+        console.log(`Setting ${parameterName} value is same as old: '${oldValue}'. No update needed.`);
       }
     };
 
@@ -68,8 +78,9 @@ exports.updateSettings = async (req, res) => {
     if (ikonFile) {
       const newIkonPath = `/uploads/setting/${ikonFile.filename}`;
       await updateSingleSetting("ikon", newIkonPath, oldIkonPath);
-      if (oldIkonPath && oldIkonPath.startsWith("/public/uploads/setting")) {
-        const fullOldPath = path.join(__dirname, "..", oldIkonPath);
+      // Hapus ikon lama jika ada dan merupakan path yang valid
+      if (oldIkonPath && oldIkonPath.startsWith("/uploads/setting")) {
+        const fullOldPath = path.join(__dirname, "..", "public", oldIkonPath);
         if (fs.existsSync(fullOldPath)) {
           fs.unlink(fullOldPath, (err) => {
             if (err) console.error("Error deleting old ikon file:", err);
@@ -77,10 +88,10 @@ exports.updateSettings = async (req, res) => {
         }
       }
       responseBody.new_ikon_path = newIkonPath;
-    } else if (req.body.ikon === "") {
-      await updateSingleSetting("ikon", null, oldIkonPath);
-      if (oldIkonPath && oldIkonPath.startsWith("/public/uploads/setting")) {
-        const fullOldPath = path.join(__dirname, "..", oldIkonPath);
+    } else if (req.body.ikon === "") { // Frontend mengirim string kosong untuk menghapus
+      await updateSingleSetting("ikon", null, oldIkonPath); // Set ke null di DB
+      if (oldIkonPath && oldIkonPath.startsWith("/uploads/setting")) {
+        const fullOldPath = path.join(__dirname, "..", "public", oldIkonPath);
         if (fs.existsSync(fullOldPath)) {
           fs.unlink(fullOldPath, (err) => {
             if (err) console.error("Error deleting cleared ikon file:", err);
@@ -90,11 +101,12 @@ exports.updateSettings = async (req, res) => {
       responseBody.ikon_cleared = true;
     }
 
+    // Logo handling
     if (logoFile) {
       const newLogoPath = `/uploads/setting/${logoFile.filename}`;
       await updateSingleSetting("logo", newLogoPath, oldLogoPath);
-      if (oldLogoPath && oldLogoPath.startsWith("/public/uploads/setting")) {
-        const fullOldPath = path.join(__dirname, "..", oldLogoPath);
+      if (oldLogoPath && oldLogoPath.startsWith("/uploads/setting")) {
+        const fullOldPath = path.join(__dirname, "..", "public", oldLogoPath);
         if (fs.existsSync(fullOldPath)) {
           fs.unlink(fullOldPath, (err) => {
             if (err) console.error("Error deleting old logo file:", err);
@@ -104,8 +116,8 @@ exports.updateSettings = async (req, res) => {
       responseBody.new_logo_path = newLogoPath;
     } else if (req.body.logo === "") {
       await updateSingleSetting("logo", null, oldLogoPath);
-      if (oldLogoPath && oldLogoPath.startsWith("/public/uploads/setting")) {
-        const fullOldPath = path.join(__dirname, "..", oldLogoPath);
+      if (oldLogoPath && oldLogoPath.startsWith("/uploads/setting")) {
+        const fullOldPath = path.join(__dirname, "..", "public", oldLogoPath);
         if (fs.existsSync(fullOldPath)) {
           fs.unlink(fullOldPath, (err) => {
             if (err) console.error("Error deleting cleared logo file:", err);
@@ -117,39 +129,20 @@ exports.updateSettings = async (req, res) => {
 
     // Update other text fields
     await updateSingleSetting("judul", judul, currentSettings.judul);
-    await updateSingleSetting(
-      "deskripsi",
-      deskripsi,
-      currentSettings.deskripsi
-    );
+    await updateSingleSetting("deskripsi", deskripsi, currentSettings.deskripsi);
     await updateSingleSetting("url", url, currentSettings.url);
     await updateSingleSetting("keyword", keyword, currentSettings.keyword);
     await updateSingleSetting("folder", folder, currentSettings.folder);
-    await updateSingleSetting(
-      "judulpendek",
-      judulpendek,
-      currentSettings.judulpendek
-    );
+    await updateSingleSetting("judulpendek", judulpendek, currentSettings.judulpendek);
     await updateSingleSetting("alamat", alamat, currentSettings.alamat);
     await updateSingleSetting("phone", phone, currentSettings.phone);
     await updateSingleSetting("power", power, currentSettings.power);
     await updateSingleSetting("powerurl", powerurl, currentSettings.powerurl);
     await updateSingleSetting("email", email, currentSettings.email);
-    await updateSingleSetting(
-      "secret_key",
-      secret_key,
-      currentSettings.secret_key
-    );
-    await updateSingleSetting(
-      "data-sitekey",
-      data_sitekey,
-      currentSettings["data-sitekey"]
-    );
-    await updateSingleSetting(
-      "googleverification",
-      googleverification,
-      currentSettings.googleverification
-    );
+    await updateSingleSetting("secret_key", secret_key, currentSettings.secret_key);
+    await updateSingleSetting("data-sitekey", data_sitekey, currentSettings["data-sitekey"]);
+    await updateSingleSetting("googleverification", googleverification, currentSettings.googleverification);
+    await updateSingleSetting("theme", theme, currentSettings.theme); // <--- MEMPERBARUI FIELD 'theme'
 
     res.status(200).json({
       message: "Pengaturan berhasil diperbarui!",
@@ -158,16 +151,14 @@ exports.updateSettings = async (req, res) => {
     });
   } catch (error) {
     console.error("Error updating setting:", error);
-    if (req.files && req.files.ikon) {
+    if (req.files && req.files.ikon && req.files.ikon[0]) {
       fs.unlink(req.files.ikon[0].path, (unlinkErr) => {
-        if (unlinkErr)
-          console.error("Error deleting uploaded ikon on failure:", unlinkErr);
+        if (unlinkErr) console.error("Error deleting uploaded ikon on failure:", unlinkErr);
       });
     }
-    if (req.files && req.files.logo) {
+    if (req.files && req.files.logo && req.files.logo[0]) {
       fs.unlink(req.files.logo[0].path, (unlinkErr) => {
-        if (unlinkErr)
-          console.error("Error deleting uploaded logo on failure:", unlinkErr);
+        if (unlinkErr) console.error("Error deleting uploaded logo on failure:", unlinkErr);
       });
     }
     res
