@@ -1,10 +1,10 @@
+require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 const db = require("./models/db");
 const cookieParser = require("cookie-parser");
 const helmet = require("helmet");
 const path = require("path");
-require("dotenv").config();
 
 const authRoute = require("./routes/authRoute");
 const menuRoute = require("./routes/menuRoute");
@@ -15,11 +15,17 @@ const dashboardRoute = require("./routes/dashboardRoute");
 const komentarRoute = require("./routes/komentarRoute");
 const settingRoute = require("./routes/settingRoute");
 const socialRoute = require("./routes/socialRoute");
+const uploadRoute = require("./routes/uploadRoute");
+
 const { loginLimiter, registerLimiter } = require("./validation/rateLimiters");
 const generateCsrfToken = require("./middleware/csrfMiddleware");
 
 const app = express();
 const port = process.env.PORT;
+
+// app.use(helmet({
+//   xContentTypeOptions: false, 
+// }));
 
 app.use(
   cors({
@@ -34,7 +40,7 @@ app.use(
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
-app.use(helmet());
+
 app.disable("x-powered-by");
 
 app.use("/uploads", express.static(path.join(__dirname, "public", "uploads")));
@@ -55,6 +61,7 @@ app.use("/dashboard", generateCsrfToken, dashboardRoute);
 app.use("/komentar", komentarRoute);
 app.use("/settings", settingRoute);
 app.use("/social", socialRoute);
+app.use("/upload", uploadRoute);
 
 app.use((err, req, res, next) => {
   if (err.message === "CSRF token tidak valid atau tidak ada.") {

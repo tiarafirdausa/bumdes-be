@@ -52,5 +52,11 @@ exports.settingImageUpload = multer({
   { name: "logo", maxCount: 1 },
 ]);
 
+exports.tinymceImageUpload = multer({
+  storage: createStorage("tinymce"), 
+  fileFilter: imageFileFilter,
+  limits: { fileSize: 5 * 1024 * 1024 },
+});
+
 exports.createStorage = createStorage;
 exports.imageFileFilter = imageFileFilter;
