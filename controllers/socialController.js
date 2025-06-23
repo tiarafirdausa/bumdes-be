@@ -3,18 +3,11 @@ const db = require("../models/db"); // Adjust path if necessary
 // Fungsi untuk membuat entri media sosial baru
 exports.createSocial = async (req, res) => {
   try {
-    const { judul, website, link } = req.body;
-    if (!judul || !website) {
-      return res.status(400).json({ error: "Judul dan Website tidak boleh kosong." });
+    const { website, link } = req.body;
+    if (!website) {
+      return res.status(400).json({ error: "Website tidak boleh kosong." });
     }
 
-    const [existingSocialByJudul] = await db.query(
-      "SELECT id_social FROM md_social WHERE judul = ?",
-      [judul]
-    );
-    if (existingSocialByJudul.length > 0) {
-      return res.status(409).json({ error: "Entri sosial dengan judul ini sudah ada." });
-    }
     const [existingSocialByWebsite] = await db.query(
       "SELECT id_social FROM md_social WHERE website = ?",
       [website]
@@ -25,13 +18,12 @@ exports.createSocial = async (req, res) => {
 
 
     const [result] = await db.query(
-      "INSERT INTO md_social (judul, website, link) VALUES (?, ?, ?)",
-      [judul, website, link]
+      "INSERT INTO md_social (website, link) VALUES (?, ?)",
+      [website, link]
     );
 
     res.status(201).json({
       id_social: result.insertId,
-      judul,
       website,
       link,
       message: "Entri sosial berhasil ditambahkan.",
@@ -40,7 +32,7 @@ exports.createSocial = async (req, res) => {
     console.error("Error creating social entry:", error);
     if (error.code === "ER_DUP_ENTRY") {
       res.status(409).json({
-        error: "Terjadi duplikasi entri. Judul atau Website mungkin sudah terdaftar.",
+        error: "Terjadi duplikasi entri. Website mungkin sudah terdaftar.",
         details: error.message,
       });
     } else {
@@ -53,7 +45,7 @@ exports.createSocial = async (req, res) => {
 exports.getAllSocial = async (req, res) => {
   try {
     const [socialEntries] = await db.query(
-      "SELECT id_social, judul, website, link FROM md_social ORDER BY id_social ASC"
+      "SELECT id_social, website, link FROM md_social ORDER BY id_social ASC"
     );
     res.status(200).json(socialEntries);
   } catch (error) {
@@ -70,7 +62,7 @@ exports.getSocialById = async (req, res) => {
   try {
     const { id } = req.params;
     const [socialEntry] = await db.query(
-      "SELECT id_social, judul, website, link FROM md_social WHERE id_social = ?",
+      "SELECT id_social, website, link FROM md_social WHERE id_social = ?",
       [id]
     );
 
@@ -90,22 +82,10 @@ exports.getSocialById = async (req, res) => {
 exports.updateSocial = async (req, res) => {
   try {
     const { id } = req.params;
-    const { judul, website, link } = req.body;
+    const {website, link } = req.body;
 
     let updateFields = [];
     let updateValues = [];
-
-    if (judul) {
-      const [existingSocialByJudul] = await db.query(
-        "SELECT id_social FROM md_social WHERE judul = ? AND id_social != ?",
-        [judul, id]
-      );
-      if (existingSocialByJudul.length > 0) {
-        return res.status(409).json({ error: "Entri sosial dengan judul ini sudah ada." });
-      }
-      updateFields.push("judul = ?");
-      updateValues.push(judul);
-    }
 
     // Jika website disediakan, periksa duplikasi dan tambahkan ke update
     if (website) {
@@ -144,7 +124,7 @@ exports.updateSocial = async (req, res) => {
     console.error("Error updating social entry:", error);
     if (error.code === "ER_DUP_ENTRY") {
       res.status(409).json({
-        error: "Terjadi duplikasi entri. Judul atau Website mungkin sudah terdaftar.",
+        error: "Terjadi duplikasi entri. Website mungkin sudah terdaftar.",
         details: error.message,
       });
     } else {
