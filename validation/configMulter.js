@@ -25,6 +25,27 @@ const imageFileFilter = (req, file, cb) => {
   }
 };
 
+const videoFileFilter = (req, file, cb) => {
+  const allowedMimeTypes = [
+    "video/mp4",
+    "video/webm",
+    "video/ogg",
+    "video/quicktime", 
+    "video/x-msvideo",
+  ];
+
+  if (allowedMimeTypes.includes(file.mimetype)) {
+    cb(null, true);
+  } else {
+    cb(
+      new Error(
+        "Only video files (MP4, WebM, Ogg, MOV, AVI) are allowed!"
+      ),
+      false
+    );
+  }
+};
+
 exports.articleImageUpload = multer({
   storage: createStorage("artikel"),
   fileFilter: imageFileFilter,
@@ -56,6 +77,12 @@ exports.tinymceImageUpload = multer({
   storage: createStorage("tinymce"), 
   fileFilter: imageFileFilter,
   limits: { fileSize: 5 * 1024 * 1024 },
+});
+
+exports.tinymceVideoUpload = multer({
+  storage: createStorage("tinymce"), 
+  fileFilter: videoFileFilter,
+  limits: { fileSize: 50 * 1024 * 1024 }, 
 });
 
 exports.createStorage = createStorage;

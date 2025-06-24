@@ -94,13 +94,11 @@ exports.createHalaman = async (req, res) => {
       });
     }
     if (error.code === "ER_DUP_ENTRY") {
-      res
-        .status(409)
-        .json({
-          error:
-            "Terjadi duplikasi entri. Judul halaman atau judul SEO mungkin sudah terdaftar.",
-          details: error.message,
-        });
+      res.status(409).json({
+        error:
+          "Terjadi duplikasi entri. Judul halaman atau judul SEO mungkin sudah terdaftar.",
+        details: error.message,
+      });
     } else {
       res
         .status(500)
@@ -286,21 +284,17 @@ exports.updateHalaman = async (req, res) => {
             );
         });
       }
-      return res
-        .status(404)
-        .json({
-          error:
-            "Halaman tidak ditemukan atau tidak ada perubahan yang dilakukan.",
-        });
+      return res.status(404).json({
+        error:
+          "Halaman tidak ditemukan atau tidak ada perubahan yang dilakukan.",
+      });
     }
 
-    res
-      .status(200)
-      .json({
-        message: "Halaman berhasil diperbarui",
-        new_image_path: newGambarPath,
-        ...responseBody,
-      });
+    res.status(200).json({
+      message: "Halaman berhasil diperbarui",
+      new_image_path: newGambarPath,
+      ...responseBody,
+    });
   } catch (error) {
     console.error("Error updating halaman:", error);
     if (req.file) {
@@ -313,13 +307,11 @@ exports.updateHalaman = async (req, res) => {
       });
     }
     if (error.code === "ER_DUP_ENTRY") {
-      res
-        .status(409)
-        .json({
-          error:
-            "Terjadi duplikasi entri. Judul halaman atau judul SEO mungkin sudah terdaftar.",
-          details: error.message,
-        });
+      res.status(409).json({
+        error:
+          "Terjadi duplikasi entri. Judul halaman atau judul SEO mungkin sudah terdaftar.",
+        details: error.message,
+      });
     } else {
       res
         .status(500)
@@ -345,12 +337,10 @@ exports.getHalamans = async (req, res) => {
     res.status(200).json(halamans);
   } catch (error) {
     console.error("Error fetching halamans:", error);
-    res
-      .status(500)
-      .json({
-        error: "Gagal mengambil daftar halaman",
-        details: error.message,
-      });
+    res.status(500).json({
+      error: "Gagal mengambil daftar halaman",
+      details: error.message,
+    });
   }
 };
 
@@ -385,7 +375,15 @@ exports.getHalamanByJudulSeo = async (req, res) => {
   try {
     const { judul_seo } = req.params;
     const [halaman] = await db.query(
-      "SELECT * FROM halaman WHERE judul_seo = ?", 
+      `SELECT
+          h.*,   
+          u.nama_lengkap AS nama_penulis
+      FROM
+          halaman h
+      LEFT JOIN
+          user u ON h.id_user = u.id_user
+      WHERE
+          h.judul_seo = ?`,
       [judul_seo]
     );
     if (halaman.length === 0) {
