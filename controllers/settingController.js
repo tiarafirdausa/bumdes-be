@@ -38,6 +38,7 @@ exports.updateSettings = async (req, res) => {
       "data-sitekey": data_sitekey, 
       googleverification,
       theme, 
+      Maps_embed,
     } = req.body;
 
     let responseBody = {};
@@ -142,7 +143,8 @@ exports.updateSettings = async (req, res) => {
     await updateSingleSetting("secret_key", secret_key, currentSettings.secret_key);
     await updateSingleSetting("data-sitekey", data_sitekey, currentSettings["data-sitekey"]);
     await updateSingleSetting("googleverification", googleverification, currentSettings.googleverification);
-    await updateSingleSetting("theme", theme, currentSettings.theme); // <--- MEMPERBARUI FIELD 'theme'
+    await updateSingleSetting("theme", theme, currentSettings.theme); 
+    await updateSingleSetting("Maps_embed", Maps_embed, currentSettings.Maps_embed);
 
     res.status(200).json({
       message: "Pengaturan berhasil diperbarui!",
