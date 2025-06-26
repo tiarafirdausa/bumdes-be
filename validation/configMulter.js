@@ -49,13 +49,13 @@ const videoFileFilter = (req, file, cb) => {
 exports.articleImageUpload = multer({
   storage: createStorage("artikel"),
   fileFilter: imageFileFilter,
-  limits: { fileSize: 5 * 1024 * 1024 },
+  limits: { fileSize: 2 * 1024 * 1024 },
 });
 
 exports.halamanImageUpload = multer({
   storage: createStorage("halaman"),
   fileFilter: imageFileFilter,
-  limits: { fileSize: 5 * 1024 * 1024 },
+  limits: { fileSize: 2 * 1024 * 1024 },
 });
 
 exports.userProfileImageUpload = multer({
@@ -76,13 +76,20 @@ exports.settingImageUpload = multer({
 exports.tinymceImageUpload = multer({
   storage: createStorage("tinymce"), 
   fileFilter: imageFileFilter,
-  limits: { fileSize: 5 * 1024 * 1024 },
+  limits: { fileSize: 2 * 1024 * 1024 },
 });
 
 exports.tinymceVideoUpload = multer({
   storage: createStorage("tinymce"), 
   fileFilter: videoFileFilter,
   limits: { fileSize: 50 * 1024 * 1024 }, 
+});
+
+
+exports.galeriImageUpload = multer({
+  storage: createStorage("galeri"), 
+  fileFilter: imageFileFilter,    
+  limits: { fileSize: 2 * 1024 * 1024 }
 });
 
 exports.createStorage = createStorage;
