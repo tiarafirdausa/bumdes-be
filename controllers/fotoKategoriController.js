@@ -41,6 +41,19 @@ exports.createKategoriGaleriFoto = async (req, res) => {
 exports.getAllKategoriGaleriFoto = async (req, res) => {
   try {
     const [kategoris] = await db.query("SELECT * FROM galeri_foto_kategori");
+    const kategorisDenganSampul = await Promise.all(
+            kategoris.map(async (kategori) => {
+                const [fotoPertama] = await db.query(
+                    "SELECT gambar FROM galeri_foto WHERE kategori = ? ORDER BY tanggal DESC LIMIT 1",
+                    [kategori.id]
+                );
+                return {
+                    ...kategori,
+                    sampul: fotoPertama.length > 0 ? fotoPertama[0].gambar : null,
+                };
+            })
+        );
+        res.status(200).json(kategorisDenganSampul);
     res.status(200).json(kategoris);
   } catch (error) {
     console.error("Error mendapatkan daftar kategori galeri:", error);
