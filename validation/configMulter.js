@@ -46,6 +46,23 @@ const videoFileFilter = (req, file, cb) => {
   }
 };
 
+const mediaFileFilter = (req, file, cb) => {
+    const allowedImageMimeTypes = ["image/jpeg", "image/png", "image/gif", "image/webp"];
+    const allowedVideoMimeTypes = [
+        "video/mp4",
+        "video/webm",
+        "video/ogg",
+        "video/quicktime", 
+        "video/x-msvideo",
+    ];
+    
+    if (allowedImageMimeTypes.includes(file.mimetype) || allowedVideoMimeTypes.includes(file.mimetype)) {
+        cb(null, true);
+    } else {
+        cb(new Error("Only image (JPEG, PNG, GIF, WebP) and video (MP4, WebM, Ogg, MOV, AVI) files are allowed!"), false);
+    }
+};
+
 exports.articleImageUpload = multer({
   storage: createStorage("artikel"),
   fileFilter: imageFileFilter,
@@ -82,15 +99,14 @@ exports.tinymceImageUpload = multer({
 exports.tinymceVideoUpload = multer({
   storage: createStorage("tinymce"), 
   fileFilter: videoFileFilter,
-  limits: { fileSize: 50 * 1024 * 1024 }, 
+  limits: { fileSize: 10 * 1024 * 1024 }, 
 });
 
-
-exports.galeriImageUpload = multer({
-  storage: createStorage("galeri"), 
-  fileFilter: imageFileFilter,    
-  limits: { fileSize: 2 * 1024 * 1024 }
-});
+exports.galeriUpload = multer({
+    storage: createStorage("galeri"),
+    fileFilter: mediaFileFilter,     
+    limits: { fileSize: 10 * 1024 * 1024 },
+}).array("media", 10);
 
 exports.createStorage = createStorage;
 exports.imageFileFilter = imageFileFilter;
