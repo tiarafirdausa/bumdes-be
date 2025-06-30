@@ -1,4 +1,132 @@
-/.env
-/node_modules
-/package-lock.json
-/.node_modules
+# Node.js
+node_modules/
+npm-debug.log
+.npm/
+.nyc_output/
+.temp/
+.DS_Store # macOS specific
+.env.local # Keep this! Local environment variables
+.env.development.local # Keep this! Local environment variables
+.env.test.local # Keep this! Local environment variables
+.env.production.local # Keep this! Local environment variables
+.next/ # Next.js build output
+.swc/ # SWC cache
+.eslintcache # ESLint cache
+.pnpm-store/ # pnpm store (if using pnpm)
+package-lock.json # Or yarn.lock/pnpm-lock.yaml based on your package manager
+yarn.lock
+pnpm-lock.yaml
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# Runtime data
+pids/
+*.pid
+*.seed
+*.pid.lock
+
+# Coverage directory
+coverage/
+
+# nyc test coverage
+.nyc_output
+
+# dotenv environment variables file (if not .env.local)
+.env
+.env.*.local # This will ignore all .env files ending with .local
+!.env.local # BUT, explicitly don't ignore .env.local
+!.env.development.local
+!.env.test.local
+!.env.production.local
+
+# Optional: temporary files
+*.tmp
+*.temp
+*.swp # vim swap files
+*.bak # backup files
+*~ # Emacs backup files
+
+# Editor directories and files
+.idea/ # IntelliJ IDEA
+.vscode/ # VSCode (can be added if you want to share settings, but often ignored)
+*.sublime-project
+*.sublime-workspace
+.project
+.settings/
+.classpath
+
+# Build artifacts
+dist/
+build/
+out/ # Next.js static export output (if used)
+
+# Thumbnails and other OS files
+.DS_Store
+Thumbs.db # Windows specific
+
+# If you use TypeScript, you might have generated files:
+*.js.map
+*.d.ts
+
+# Test files (if you have specific outputs)
+/test/temp/ # Example for temporary test files
+
+# Uploaded files or user-generated content (if stored directly in the repo for local dev)
+/public/uploads/ # Example for user uploads in a 'public/uploads' directory
+/uploads/ # Another common place for uploads
+
+# Mac specific
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Linux specific
+*.swp
+
+# Windows specific
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.lnk
+
+# Example for Jest cache
+.jest/cache/
+.cache/
+
+# Cypress generated videos and screenshots
+cypress/videos/
+cypress/screenshots/
+
+# Sentry
+.sentryclirc
+
+# Docker (if you have Docker Compose files or build artifacts)
+.docker/
+.dockerignore
+
+# Terraform (if you use it for infrastructure)
+.terraform/
+*.tfstate
+*.tfstate.*
+
+# Serverless framework (if you use it)
+.serverless/
+.webpack/
+
+# Storybook
+.storybook-out/
+
+# Database files (if you store them locally, e.g., SQLite)
+*.sqlite
+*.sqlite3
+*.db
+
+# Any other sensitive files
+config.js # If it contains sensitive information, though .env is preferred
