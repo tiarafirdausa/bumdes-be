@@ -7,8 +7,47 @@ const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 const sendEmail = require("../middleware/sendEmail");
-const { generateTokenAndSetCookie } = require("../middleware/authMiddleware");
 require("dotenv").config();
+
+const JWT_SECRET = process.env.JWT_SECRET;
+const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || "1h";
+const convertExpiresInToMs = (expiresIn) => {
+  const value = parseInt(expiresIn);
+  if (expiresIn.endsWith("h")) {
+    return value * 60 * 60 * 1000;
+  } else if (expiresIn.endsWith("m")) {
+    return value * 60 * 1000;
+  } else if (expiresIn.endsWith("d")) {
+    return value * 24 * 60 * 60 * 1000;
+  }
+  return value * 1000;
+};
+
+const generateTokenAndSetCookie = (user, statusCode, res) => {
+  const token = jwt.sign(
+    { id: user.id_user, username: user.username, level: user.level },
+    JWT_SECRET,
+    { expiresIn: JWT_EXPIRES_IN }
+  );
+  const cookieMaxAgeMs = convertExpiresInToMs(JWT_EXPIRES_IN);
+  res.cookie("token", token, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    maxAge: cookieMaxAgeMs,
+    sameSite: "Lax",
+  });
+
+  res.status(statusCode).json({
+    user: {
+      id: user.id_user,
+      nama_lengkap: user.nama_lengkap,
+      email: user.email,
+      username: user.username,
+      level: user.level,
+      foto: user.foto,
+    },
+  });
+};
 
 // --- Login Pengguna ---
 exports.loginUser = async (req, res) => {
@@ -42,7 +81,7 @@ exports.loginUser = async (req, res) => {
         .json({ error: "Kredensial tidak valid (password salah)." });
     }
 
-    generateTokenAndSetCookie(user, 200, res);
+    generateTokenAndSetCookie(user,200, res);
   } catch (error) {
     console.error("Error logging in user:", error);
     res
