@@ -5,47 +5,10 @@ const jwt = require("jsonwebtoken");
 const { validationResult } = require("express-validator");
 const fs = require("fs");
 const path = require("path");
+const crypto = require("crypto");
+const sendEmail = require("../middleware/sendEmail");
+const { generateTokenAndSetCookie } = require("../middleware/authMiddleware");
 require("dotenv").config();
-
-const JWT_SECRET = process.env.JWT_SECRET;
-const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || "1h";
-const convertExpiresInToMs = (expiresIn) => {
-  const value = parseInt(expiresIn);
-  if (expiresIn.endsWith("h")) {
-    return value * 60 * 60 * 1000;
-  } else if (expiresIn.endsWith("m")) {
-    return value * 60 * 1000;
-  } else if (expiresIn.endsWith("d")) {
-    return value * 24 * 60 * 60 * 1000;
-  }
-  return value * 1000;
-};
-
-const generateTokenAndSetCookie = (user, statusCode, res) => {
-  const token = jwt.sign(
-    { id: user.id_user, username: user.username, level: user.level },
-    JWT_SECRET,
-    { expiresIn: JWT_EXPIRES_IN }
-  );
-  const cookieMaxAgeMs = convertExpiresInToMs(JWT_EXPIRES_IN);
-  res.cookie("token", token, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    maxAge: cookieMaxAgeMs,
-    sameSite: "Lax",
-  });
-
-  res.status(statusCode).json({
-    user: {
-      id: user.id_user,
-      nama_lengkap: user.nama_lengkap,
-      email: user.email,
-      username: user.username,
-      level: user.level,
-      foto: user.foto,
-    },
-  });
-};
 
 // --- Login Pengguna ---
 exports.loginUser = async (req, res) => {
@@ -530,4 +493,109 @@ exports.getUserById = async (req, res) => {
         details: error.message,
       });
   }
+};
+
+exports.forgotPassword = async (req, res) => {
+    const { email } = req.body;
+    if (!email) {
+        return res.status(400).json({ error: 'Email wajib diisi.' });
+    }
+
+    try {
+        const [users] = await db.query(
+            "SELECT id_user, username, email FROM user WHERE email = ?",
+            [email]
+        );
+
+        const user = users[0];
+        if (!user) {
+            return res.status(200).json({ message: 'Jika email terdaftar, instruksi reset password telah dikirim.' });
+        }
+
+        const resetToken = crypto.randomBytes(32).toString('hex');
+        const passwordResetToken = crypto.createHash('sha256').update(resetToken).digest('hex');
+
+        const resetPasswordExpires = new Date(Date.now() + 60 * 60 * 1000); // 1 jam
+
+        await db.query(
+            "UPDATE user SET resetPasswordToken = ?, resetPasswordExpires = ? WHERE id_user = ?",
+            [passwordResetToken, resetPasswordExpires, user.id_user]
+        );
+
+        const resetUrl = `${process.env.FRONTEND_URL}/reset-password/${resetToken}`;
+
+        const message = `
+            <h1>Anda telah meminta reset password</h1>
+            <p>Silakan buka tautan berikut untuk mereset password Anda:</p>
+            <a href="${resetUrl}" clicktracking="off">${resetUrl}</a>
+            <p>Tautan ini akan kedaluwarsa dalam 1 jam.</p>
+            <p>Jika Anda tidak meminta reset password ini, abaikan email ini.</p>
+        `;
+
+        try {
+            await sendEmail({
+                email: user.email,
+                subject: 'Reset Password Anda',
+                message,
+            });
+
+            res.status(200).json({ message: 'Email reset password berhasil dikirim.' });
+        } catch (emailError) {
+            await db.query(
+                "UPDATE user SET resetPasswordToken = NULL, resetPasswordExpires = NULL WHERE id_user = ?",
+                [user.id_user]
+            );
+            console.error("Error sending email:", emailError);
+            return res.status(500).json({ error: 'Gagal mengirim email reset password. Silakan coba lagi nanti.', details: emailError.message });
+        }
+
+    } catch (error) {
+        console.error("Error in forgotPassword:", error);
+        res.status(500).json({ error: 'Terjadi kesalahan saat memproses permintaan lupa password.', details: error.message });
+    }
+};
+
+// --- Reset Password ---
+exports.resetPassword = async (req, res) => {
+    const { token } = req.params; 
+    const { password } = req.body; 
+
+    if (!password) {
+        return res.status(400).json({ error: 'Password baru wajib diisi.' });
+    }
+    if (password.length < 6) { 
+        return res.status(400).json({ error: 'Password baru minimal 6 karakter.' });
+    }
+    // Opsional: Tambahkan validasi password yang lebih ketat di sini juga
+    // Contoh:
+    // if (!/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]).*$/.test(password)) {
+    //     return res.status(400).json({ error: "Password harus mengandung setidaknya satu huruf besar, satu huruf kecil, satu angka, dan satu simbol." });
+    // }
+
+    try {
+        const hashedToken = crypto.createHash('sha256').update(token).digest('hex');
+
+        const [users] = await db.query(
+            "SELECT id_user FROM user WHERE resetPasswordToken = ? AND resetPasswordExpires > NOW()",
+            [hashedToken]
+        );
+
+        const user = users[0];
+        if (!user) {
+            return res.status(400).json({ error: 'Token reset password tidak valid atau sudah kedaluwarsa.' });
+        }
+
+        const hashedPassword = await bcrypt.hash(password, 10);
+
+        await db.query(
+            "UPDATE user SET password = ?, resetPasswordToken = NULL, resetPasswordExpires = NULL WHERE id_user = ?",
+            [hashedPassword, user.id_user]
+        );
+
+        res.status(200).json({ message: 'Password berhasil direset. Silakan login dengan password baru Anda.' });
+
+    } catch (error) {
+        console.error("Error in resetPassword:", error);
+        res.status(500).json({ error: 'Gagal mereset password.', details: error.message });
+    }
 };
