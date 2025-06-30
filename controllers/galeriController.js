@@ -43,7 +43,7 @@ exports.createGaleriEntry = async (req, res) => {
         }
 
         const [resultGaleri] = await db.query(
-            "INSERT INTO galeri (judul, tanggal, user_id, deskripsi, slug) VALUES (?, ?, ?, ?, ?)",
+            "INSERT INTO galeri (judul, tanggal, id_user, deskripsi, slug) VALUES (?, ?, ?, ?, ?)",
             [judul, tanggal, id_user, deskripsi || null, finalSlug]
         );
         const galeri_id_baru = resultGaleri.insertId;
@@ -106,7 +106,20 @@ exports.createGaleriEntry = async (req, res) => {
 
 exports.getAllGaleriEntries = async (req, res) => {
     try {
-        const [galeriEntries] = await db.query("SELECT id, judul, tanggal, user_id, deskripsi, slug FROM galeri ORDER BY tanggal DESC");
+        const [galeriEntries] = await db.query(
+            `
+            SELECT
+                g.*,
+                u.nama_lengkap AS username,
+                u.foto AS user_photo
+            FROM
+                galeri g
+            LEFT JOIN 
+                user u ON g.id_user = u.id_user
+            ORDER BY
+                g.tanggal DESC 
+            `
+        );
         if (galeriEntries.length === 0) {
             return res.status(200).json([]);
         }
@@ -141,12 +154,23 @@ exports.getAllGaleriEntries = async (req, res) => {
     }
 };
 
-
 exports.getGaleriEntryById = async (req, res) => {
     try {
         const { id } = req.params;
 
-        const [galeriEntry] = await db.query("SELECT id, judul, tanggal, user_id, deskripsi, slug FROM galeri WHERE id = ?", [id]);
+        const [galeriEntry] = await db.query(
+            `
+            SELECT
+                g.*,
+                u.nama_lengkap AS username,
+                u.foto AS user_photo
+            FROM
+                galeri g
+            LEFT JOIN 
+                user u ON g.id_user = u.id_user
+            WHERE g.id = ?`,
+            [id]
+        );
 
         if (galeriEntry.length === 0) {
             return res.status(404).json({ error: "Entri galeri tidak ditemukan." });
@@ -175,7 +199,19 @@ exports.getGaleriEntryById = async (req, res) => {
 exports.getGaleriEntryBySlug = async (req, res) => {
     try {
         const { slug } = req.params;
-        const [galeriEntry] = await db.query("SELECT id, judul, tanggal, user_id, deskripsi, slug FROM galeri WHERE slug = ?", [slug]);
+        const [galeriEntry] = await db.query(
+            `
+            SELECT
+                g.*,
+                u.nama_lengkap AS username,
+                u.foto AS user_photo
+            FROM
+                galeri g
+            LEFT JOIN 
+                user u ON g.id_user = u.id_user
+            WHERE g.slug = ?`,
+            [slug]
+        );
 
         if (galeriEntry.length === 0) {
             return res.status(404).json({ error: "Entri galeri tidak ditemukan berdasarkan slug." });
@@ -239,7 +275,7 @@ exports.updateGaleriEntry = async (req, res) => {
         }
 
         if (id_user !== undefined) {
-            updates.user_id = id_user;
+            updates.id_user = id_user;
             params.push(id_user);
         }
 
@@ -293,7 +329,7 @@ exports.updateGaleriEntry = async (req, res) => {
             new_judul: judul,
             new_deskripsi: deskripsi,
             new_slug: finalSlug,
-            new_user_id: id_user
+            new_id_user: id_user
         });
     } catch (error) {
         console.error("Error memperbarui entri galeri:", error);
