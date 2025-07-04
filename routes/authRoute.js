@@ -46,6 +46,6 @@ router.get("/users", authMiddleware.protect, authController.getUsers);
 router.delete("/users/:id", authMiddleware.protect, authController.deleteUser);
 
 router.post("/forgot-password", authController.forgotPassword);
-router.post("/reset-password/:token", authController.resetPassword);
+router.post("/reset-password", authController.resetPassword);
 
 module.exports = router;

@@ -18,7 +18,7 @@ const socialRoute = require("./routes/socialRoute");
 const uploadRoute = require("./routes/uploadRoute");
 const galeriRoute = require("./routes/galeriRoute");
 
-const { loginLimiter, registerLimiter } = require("./validation/rateLimiters");
+const { loginLimiter, registerLimiter, forgotPasswordLimiter } = require("./validation/rateLimiters");
 const generateCsrfToken = require("./middleware/csrfMiddleware");
 
 const app = express();
@@ -52,6 +52,7 @@ app.get("/auth/csrf-token", generateCsrfToken, (req, res) => {
 
 app.use("/auth/login", loginLimiter);
 app.use("/auth/register", registerLimiter);
+app.use("/auth/forgot-password", forgotPasswordLimiter);
 
 app.use("/menu", menuRoute);
 app.use("/auth", authRoute);

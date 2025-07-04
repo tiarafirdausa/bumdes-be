@@ -353,6 +353,7 @@ exports.getArtikels = async (req, res) => {
             SELECT
                 a.*,
                 u.nama_lengkap AS nama_penulis,
+                u.foto AS foto_penulis,
                 k.kategori AS kategori_nama,
                 k.kategori_seo AS kategori_seo,
                 k.id_kategori as id_kategori

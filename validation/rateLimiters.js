@@ -29,8 +29,18 @@ const registerLimiter = rateLimit({
   },
 });
 
+const forgotPasswordLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000, // 5 menit
+  max: 5, // Izinkan 5 permintaan per IP dalam 5 menit
+  message:
+    "Terlalu banyak permintaan reset password dari IP ini, silakan coba lagi setelah 5 menit.",
+  statusCode: 429, // Too Many Requests
+  headers: true,
+});
+
 // Ekspor limiter agar bisa digunakan di file lain
 module.exports = {
   loginLimiter,
   registerLimiter,
+  forgotPasswordLimiter,
 };

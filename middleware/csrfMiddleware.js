@@ -29,8 +29,6 @@ const generateCsrfToken = (req, res, next) => {
     !csrfTokenFromCookie ||
     csrfTokenFromHeader !== csrfTokenFromCookie
   ) {
-    console.log("Header token:", csrfTokenFromHeader);
-    console.log("Cookie token:", csrfTokenFromCookie);
     return res
       .status(403)
       .json({ error: "CSRF token tidak valid atau tidak ada." });

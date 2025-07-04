@@ -561,7 +561,7 @@ exports.forgotPassword = async (req, res) => {
             [passwordResetToken, resetPasswordExpires, user.id_user]
         );
 
-        const resetUrl = `${process.env.FRONTEND_URL}/reset-password/${resetToken}`;
+        const resetUrl = `${process.env.FRONTEND_URL}/reset-password?token=${resetToken}`;
 
         const message = `
             <h1>Anda telah meminta reset password</h1>
@@ -596,27 +596,29 @@ exports.forgotPassword = async (req, res) => {
 
 // --- Reset Password ---
 exports.resetPassword = async (req, res) => {
-    const { token } = req.params; 
-    const { password } = req.body; 
+    const { token } = req.query;
+    const { password } = req.body;
+
+    console.log('Token received from frontend (raw):', token); // Debugging
 
     if (!password) {
         return res.status(400).json({ error: 'Password baru wajib diisi.' });
     }
-    if (password.length < 6) { 
+    if (password.length < 6) {
         return res.status(400).json({ error: 'Password baru minimal 6 karakter.' });
     }
-    // Opsional: Tambahkan validasi password yang lebih ketat di sini juga
-    // Contoh:
-    // if (!/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]).*$/.test(password)) {
-    //     return res.status(400).json({ error: "Password harus mengandung setidaknya satu huruf besar, satu huruf kecil, satu angka, dan satu simbol." });
-    // }
 
     try {
-        const hashedToken = crypto.createHash('sha256').update(token).digest('hex');
+        // --- PERBAIKAN UTAMA DI SINI ---
+        // HASH TOKEN YANG DITERIMA DARI FRONTEND HANYA SEKALI
+        // Gunakan nama variabel yang jelas, misal `hashedReceivedToken`
+        const hashedReceivedToken = crypto.createHash('sha256').update(token).digest('hex');
+        console.log('Token hashed by backend (for comparison):', hashedReceivedToken); // Debugging
 
+        // Kemudian gunakan `hashedReceivedToken` ini dalam query database
         const [users] = await db.query(
             "SELECT id_user FROM user WHERE resetPasswordToken = ? AND resetPasswordExpires > NOW()",
-            [hashedToken]
+            [hashedReceivedToken] // <-- Gunakan `hashedReceivedToken` di sini
         );
 
         const user = users[0];
@@ -638,3 +640,4 @@ exports.resetPassword = async (req, res) => {
         res.status(500).json({ error: 'Gagal mereset password.', details: error.message });
     }
 };
+
