@@ -17,9 +17,9 @@ const settingRoute = require("./routes/settingRoute");
 const socialRoute = require("./routes/socialRoute");
 const uploadRoute = require("./routes/uploadRoute");
 const galeriRoute = require("./routes/galeriRoute");
-
-const { loginLimiter, registerLimiter, forgotPasswordLimiter } = require("./validation/rateLimiters");
 const generateCsrfToken = require("./middleware/csrfMiddleware");
+const { loginLimiter, registerLimiter, forgotPasswordLimiter } = require("./validation/rateLimiters");
+
 
 const app = express();
 const port = process.env.PORT;
@@ -28,6 +28,7 @@ const port = process.env.PORT;
 //   xContentTypeOptions: false, 
 // }));
 
+app.set('trust proxy', 1);
 app.use(
   cors({
     origin: process.env.FRONTEND_URL,
@@ -46,7 +47,8 @@ app.disable("x-powered-by");
 
 app.use("/uploads", express.static(path.join(__dirname, "public", "uploads")));
 
-app.get("/auth/csrf-token", generateCsrfToken, (req, res) => {
+app.use(generateCsrfToken);
+app.get("/auth/csrf-token", (req, res) => {
   res.json({ csrfToken: req.csrfToken });
 });
 
@@ -59,7 +61,7 @@ app.use("/auth", authRoute);
 app.use("/kategori", kategoriRoute);
 app.use("/artikel", artikelRoute);
 app.use("/halaman", halamanRoute);
-app.use("/dashboard", generateCsrfToken, dashboardRoute);
+app.use("/dashboard", dashboardRoute);
 app.use("/komentar", komentarRoute);
 app.use("/settings", settingRoute);
 app.use("/social", socialRoute);
