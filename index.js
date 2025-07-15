@@ -24,6 +24,11 @@ const { loginLimiter, registerLimiter, forgotPasswordLimiter } = require("./vali
 const app = express();
 const port = process.env.PORT;
 
+// Middleware (Helmet dan Rate Limiting)
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+app.use(cookieParser());
+
 // app.use(helmet({
 //   xContentTypeOptions: false, 
 // }));
@@ -33,21 +38,15 @@ app.use(
   cors({
     origin: process.env.FRONTEND_URL,
     credentials: true,
-    methods: ["GET", "POST", "PUT", "DELETE"],
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
     allowedHeaders: ["Content-Type", "Authorization", "X-CSRF-Token"],
   })
 );
 
-// Middleware (Helmet dan Rate Limiting)
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-app.use(cookieParser());
-
 app.disable("x-powered-by");
-
+app.use(generateCsrfToken);
 app.use("/uploads", express.static(path.join(__dirname, "public", "uploads")));
 
-app.use(generateCsrfToken);
 app.get("/auth/csrf-token", (req, res) => {
   res.json({ csrfToken: req.csrfToken });
 });
