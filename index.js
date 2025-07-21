@@ -10,7 +10,7 @@ const authRoute = require("./routes/authRoute");
 const menuRoute = require("./routes/menuRoute");
 const categoryRoute = require("./routes/categoryRoute");
 const artikelRoute = require("./routes/artikelRoute");
-const halamanRoute = require("./routes/halamanRoute");
+const pageRoute = require("./routes/pageRoute");
 const dashboardRoute = require("./routes/dashboardRoute");
 const komentarRoute = require("./routes/komentarRoute");
 const settingRoute = require("./routes/settingRoute");
@@ -57,18 +57,18 @@ app.use("/auth/login", loginLimiter);
 app.use("/auth/register", registerLimiter);
 app.use("/auth/forgot-password", forgotPasswordLimiter);
 
-app.use("/menu", menuRoute);
+app.use("/menus", menuRoute);
 app.use("/auth", authRoute);
 app.use("/categories", categoryRoute);
 app.use("/artikel", artikelRoute);
-app.use("/halaman", halamanRoute);
+app.use("/pages", pageRoute);
 app.use("/dashboard", dashboardRoute);
-app.use("/komentar", komentarRoute);
+app.use("/comments", komentarRoute);
 app.use("/settings", settingRoute);
-app.use("/social", socialRoute);
+app.use("/socials", socialRoute);
 app.use("/upload", uploadRoute);
 app.use("/galeri", galeriRoute);
-app.use("/tag", tagRoute);
+app.use("/tags", tagRoute);
 
 app.use((err, req, res, next) => {
   if (err.message === "CSRF token tidak valid atau tidak ada.") {

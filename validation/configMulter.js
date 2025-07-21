@@ -5,7 +5,7 @@ const fs = require("fs");
 const createStorage = (folderName) => {
   return multer.diskStorage({
     destination: (req, file, cb) => {
-      const uploadPath = path.join(__dirname, "../public/uploads", folderName);
+      const uploadPath = path.join(__dirname,  '..', 'public', 'uploads', folderName);
       fs.mkdirSync(uploadPath, { recursive: true });
       cb(null, uploadPath);
     },
@@ -69,8 +69,8 @@ exports.articleImageUpload = multer({
   limits: { fileSize: 2 * 1024 * 1024 },
 });
 
-exports.halamanImageUpload = multer({
-  storage: createStorage("halaman"),
+exports.pageImageUpload = multer({
+  storage: createStorage("pages"),
   fileFilter: imageFileFilter,
   limits: { fileSize: 2 * 1024 * 1024 },
 });
