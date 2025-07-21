@@ -17,6 +17,7 @@ const settingRoute = require("./routes/settingRoute");
 const socialRoute = require("./routes/socialRoute");
 const uploadRoute = require("./routes/uploadRoute");
 const galeriRoute = require("./routes/galeriRoute");
+const tagRoute = require("./routes/tagRoute");
 
 const generateCsrfToken = require("./middleware/csrfMiddleware");
 const { loginLimiter, registerLimiter, forgotPasswordLimiter } = require("./validation/rateLimiters");
@@ -67,6 +68,7 @@ app.use("/settings", settingRoute);
 app.use("/social", socialRoute);
 app.use("/upload", uploadRoute);
 app.use("/galeri", galeriRoute);
+app.use("/tag", tagRoute);
 
 app.use((err, req, res, next) => {
   if (err.message === "CSRF token tidak valid atau tidak ada.") {
