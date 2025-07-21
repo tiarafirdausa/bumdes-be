@@ -63,8 +63,8 @@ const mediaFileFilter = (req, file, cb) => {
     }
 };
 
-exports.articleImageUpload = multer({
-  storage: createStorage("artikel"),
+exports.postImageUpload  = multer({
+  storage: createStorage("posts"),
   fileFilter: imageFileFilter,
   limits: { fileSize: 2 * 1024 * 1024 },
 });
