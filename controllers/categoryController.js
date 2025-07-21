@@ -1,44 +1,44 @@
 const db = require("../models/db");
 
-// Fungsi untuk membuat kategori baru
-exports.createKategori = async (req, res) => {
+exports.createCategory = async (req, res) => { 
   try {
-    const { kategori } = req.body;
-    if (!kategori) {
+    const { name } = req.body;
+    if (!name) {
       return res
         .status(400)
         .json({ error: "Nama kategori tidak boleh kosong." });
     }
 
-    const [existingKategori] = await db.query(
-      "SELECT id_kategori FROM kategori WHERE kategori = ?",
-      [kategori]
+    const [existingCategory] = await db.query( 
+      "SELECT id FROM categories WHERE name = ?",
+      [name]
     );
-    if (existingKategori.length > 0) {
+    if (existingCategory.length > 0) {
       return res
         .status(409)
         .json({ error: "Kategori dengan nama ini sudah ada." });
     }
 
-    let kategori_seo = req.body.kategori_seo;
-    if (!kategori_seo) {
-      kategori_seo = kategori
+    let slug = req.body.slug;
+    if (!slug) {
+      slug = name
         .toLowerCase()
         .replace(/\s+/g, "-")
         .replace(/[^a-z0-9-]/g, "");
     }
+
     const [result] = await db.query(
-      "INSERT INTO kategori (kategori, kategori_seo) VALUES (?, ?)",
-      [kategori, kategori_seo]
+      "INSERT INTO categories (name, slug) VALUES (?, ?)",
+      [name, slug]
     );
 
     res.status(201).json({
-      id_kategori: result.insertId,
-      kategori,
-      kategori_seo,
+      id: result.insertId,
+      name,
+      slug,
     });
   } catch (error) {
-    console.error("Error creating kategori:", error);
+    console.error("Error creating category:", error);
     if (error.code === "ER_DUP_ENTRY") {
       res
         .status(409)
@@ -54,15 +54,14 @@ exports.createKategori = async (req, res) => {
   }
 };
 
-// Fungsi untuk mendapatkan semua kategori
-exports.getKategoris = async (req, res) => {
+exports.getCategories = async (req, res) => { 
   try {
-    const [kategoris] = await db.query(
-      "SELECT id_kategori, kategori, kategori_seo FROM kategori ORDER BY kategori ASC"
+    const [categories] = await db.query( 
+      "SELECT id, name, slug FROM categories ORDER BY name ASC"
     );
-    res.status(200).json(kategoris);
+    res.status(200).json(categories);
   } catch (error) {
-    console.error("Error fetching kategoris:", error);
+    console.error("Error fetching categories:", error); 
     res
       .status(500)
       .json({
@@ -72,74 +71,72 @@ exports.getKategoris = async (req, res) => {
   }
 };
 
-// Fungsi untuk mendapatkan kategori berdasarkan ID
-exports.getKategoriById = async (req, res) => {
+exports.getCategoryById = async (req, res) => { 
   try {
     const { id } = req.params;
-    const [kategori] = await db.query(
-      "SELECT id_kategori, kategori, kategori_seo FROM kategori WHERE id_kategori = ?",
+    const [category] = await db.query( 
+      "SELECT id, name, slug FROM categories WHERE id = ?",
       [id]
     );
 
-    if (kategori.length === 0) {
+    if (category.length === 0) { 
       return res.status(404).json({ error: "Kategori tidak ditemukan" });
     }
 
-    res.status(200).json(kategori[0]);
+    res.status(200).json(category[0]); 
   } catch (error) {
-    console.error("Error fetching kategori by ID:", error);
+    console.error("Error fetching category by ID:", error); 
     res
       .status(500)
       .json({ error: "Gagal mengambil kategori", details: error.message });
   }
 };
 
-exports.getKategoriBySeo = async (req, res) => {
+exports.getCategoryBySlug = async (req, res) => { 
   try {
-    const { kategori_seo } = req.params;
-    const [kategori] = await db.query(
-      "SELECT id_kategori, kategori, kategori_seo FROM kategori WHERE kategori_seo = ?",
-      [kategori_seo]
+    const { slug } = req.params;
+    const [category] = await db.query( 
+      "SELECT id, name, slug FROM categories WHERE slug = ?",
+      [slug]
     );
 
-    if (kategori.length === 0) {
+    if (category.length === 0) { 
       return res.status(404).json({ error: "Kategori tidak ditemukan" });
     }
 
-    res.status(200).json(kategori[0]);
+    res.status(200).json(category[0]); 
   } catch (error) {
-    console.error("Error fetching kategori by seo:", error);
+    console.error("Error fetching category by slug:", error); 
     res
       .status(500)
       .json({ error: "Gagal mengambil kategori", details: error.message });
   }
 };
 
-// Fungsi untuk memperbarui kategori
-exports.updateKategori = async (req, res) => {
+exports.updateCategory = async (req, res) => { 
   try {
     const { id } = req.params;
-    const { kategori, kategori_seo } = req.body;
+    const { name, slug } = req.body;
 
     let updateFields = [];
     let updateValues = [];
 
-    if (kategori) {
-      const [existingKategori] = await db.query(
-        "SELECT id_kategori FROM kategori WHERE kategori = ? AND id_kategori != ?",
-        [kategori, id]
+    if (name) {
+      const [existingCategory] = await db.query( 
+        "SELECT id FROM categories WHERE name = ? AND id != ?",
+        [name, id]
       );
-      if (existingKategori.length > 0) {
+      if (existingCategory.length > 0) {
         return res
           .status(409)
           .json({ error: "Kategori dengan nama ini sudah ada." });
       }
-      updateFields.push("kategori = ?");
-      updateValues.push(kategori);
+      updateFields.push("name = ?");
+      updateValues.push(name);
     }
-    if (kategori_seo) {
-      updateFields.push("kategori_seo = ?");
-      updateValues.push(kategori_seo);
+    if (slug) {
+      updateFields.push("slug = ?");
+      updateValues.push(slug);
     }
 
     if (updateFields.length === 0) {
@@ -148,9 +145,9 @@ exports.updateKategori = async (req, res) => {
         .json({ error: "Tidak ada data yang disediakan untuk diperbarui." });
     }
 
-    const query = `UPDATE kategori SET ${updateFields.join(
+    const query = `UPDATE categories SET ${updateFields.join(
       ", "
-    )} WHERE id_kategori = ?`;
+    )} WHERE id = ?`;
     updateValues.push(id);
 
     const [result] = await db.query(query, updateValues);
@@ -165,7 +162,7 @@ exports.updateKategori = async (req, res) => {
 
     res.status(200).json({ message: "Kategori berhasil diperbarui" });
   } catch (error) {
-    console.error("Error updating kategori:", error);
+    console.error("Error updating category:", error); 
     if (error.code === "ER_DUP_ENTRY") {
       res
         .status(409)
@@ -181,12 +178,12 @@ exports.updateKategori = async (req, res) => {
   }
 };
 
-// Fungsi untuk menghapus kategori
-exports.deleteKategori = async (req, res) => {
+
+exports.deleteCategory = async (req, res) => {
   try {
     const { id } = req.params;
     const [result] = await db.query(
-      "DELETE FROM kategori WHERE id_kategori = ?",
+      "DELETE FROM categories WHERE id = ?",
       [id]
     );
 
@@ -196,7 +193,7 @@ exports.deleteKategori = async (req, res) => {
 
     res.status(200).json({ message: "Kategori berhasil dihapus" });
   } catch (error) {
-    console.error("Error deleting kategori:", error);
+    console.error("Error deleting category:", error); // Updated console error
     res
       .status(500)
       .json({ error: "Gagal menghapus kategori", details: error.message });

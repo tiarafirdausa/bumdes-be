@@ -8,7 +8,7 @@ const path = require("path");
 
 const authRoute = require("./routes/authRoute");
 const menuRoute = require("./routes/menuRoute");
-const kategoriRoute = require("./routes/kategoriRoute");
+const categoryRoute = require("./routes/categoryRoute");
 const artikelRoute = require("./routes/artikelRoute");
 const halamanRoute = require("./routes/halamanRoute");
 const dashboardRoute = require("./routes/dashboardRoute");
@@ -58,7 +58,7 @@ app.use("/auth/forgot-password", forgotPasswordLimiter);
 
 app.use("/menu", menuRoute);
 app.use("/auth", authRoute);
-app.use("/kategori", kategoriRoute);
+app.use("/categories", categoryRoute);
 app.use("/artikel", artikelRoute);
 app.use("/halaman", halamanRoute);
 app.use("/dashboard", dashboardRoute);
