@@ -7,7 +7,8 @@ const helmet = require("helmet");
 const path = require("path");
 
 const authRoute = require("./routes/authRoute");
-const menuRoute = require("./routes/menuRoute");
+const menuRoute = require("./routes/menuRoute"); 
+const menuItemRoute = require("./routes/menuItemRoute");
 const categoryRoute = require("./routes/categoryRoute");
 const artikelRoute = require("./routes/artikelRoute");
 const pageRoute = require("./routes/pageRoute");
@@ -57,7 +58,8 @@ app.use("/auth/login", loginLimiter);
 app.use("/auth/register", registerLimiter);
 app.use("/auth/forgot-password", forgotPasswordLimiter);
 
-app.use("/menus", menuRoute);
+app.use("/menu-definitions", menuRoute);
+app.use("/menu-items", menuItemRoute); 
 app.use("/auth", authRoute);
 app.use("/categories", categoryRoute);
 app.use("/artikel", artikelRoute);
