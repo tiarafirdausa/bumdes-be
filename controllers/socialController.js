@@ -1,38 +1,46 @@
-const db = require("../models/db"); // Adjust path if necessary
+const db = require("../models/db"); 
 
-// Fungsi untuk membuat entri media sosial baru
 exports.createSocial = async (req, res) => {
   try {
-    const { website, link } = req.body;
-    if (!website) {
-      return res.status(400).json({ error: "Website tidak boleh kosong." });
+    const { platform, url, icon_class, is_active } = req.body;
+    
+    if (!platform) {
+      return res.status(400).json({ error: "Nama platform tidak boleh kosong." });
     }
 
-    const [existingSocialByWebsite] = await db.query(
-      "SELECT id_social FROM md_social WHERE website = ?",
-      [website]
+    const [existingSocialByPlatform] = await db.query(
+      "SELECT id FROM social_links WHERE platform = ?",
+      [platform]
     );
-    if (existingSocialByWebsite.length > 0) {
-      return res.status(409).json({ error: "Entri sosial dengan website ini sudah ada." });
+    if (existingSocialByPlatform.length > 0) {
+      return res.status(409).json({ error: "Entri sosial dengan platform ini sudah ada." });
     }
 
+    const values = [
+      platform,
+      url || null, 
+      icon_class || null, 
+      is_active !== undefined ? is_active : 1,
+    ];
 
     const [result] = await db.query(
-      "INSERT INTO md_social (website, link) VALUES (?, ?)",
-      [website, link]
+      "INSERT INTO social_links (platform, url, icon_class, is_active) VALUES (?, ?, ?, ?)", 
+      values
     );
 
     res.status(201).json({
-      id_social: result.insertId,
-      website,
-      link,
+      id: result.insertId,
+      platform,
+      url: url || null,
+      icon_class: icon_class || null,
+      is_active: is_active !== undefined ? is_active : 1,
       message: "Entri sosial berhasil ditambahkan.",
     });
   } catch (error) {
     console.error("Error creating social entry:", error);
     if (error.code === "ER_DUP_ENTRY") {
       res.status(409).json({
-        error: "Terjadi duplikasi entri. Website mungkin sudah terdaftar.",
+        error: "Terjadi duplikasi entri. Platform mungkin sudah terdaftar.",
         details: error.message,
       });
     } else {
@@ -41,11 +49,10 @@ exports.createSocial = async (req, res) => {
   }
 };
 
-// Fungsi untuk mendapatkan semua entri media sosial
 exports.getAllSocial = async (req, res) => {
   try {
     const [socialEntries] = await db.query(
-      "SELECT id_social, website, link FROM md_social ORDER BY id_social ASC"
+      "SELECT id, platform, url, icon_class, is_active, created_at, updated_at FROM social_links ORDER BY platform ASC" 
     );
     res.status(200).json(socialEntries);
   } catch (error) {
@@ -57,12 +64,11 @@ exports.getAllSocial = async (req, res) => {
   }
 };
 
-// Fungsi untuk mendapatkan entri media sosial berdasarkan ID
 exports.getSocialById = async (req, res) => {
   try {
     const { id } = req.params;
     const [socialEntry] = await db.query(
-      "SELECT id_social, website, link FROM md_social WHERE id_social = ?",
+      "SELECT id, platform, url, icon_class, is_active, created_at, updated_at FROM social_links WHERE id = ?", 
       [id]
     );
 
@@ -77,40 +83,45 @@ exports.getSocialById = async (req, res) => {
   }
 };
 
-
-// Fungsi untuk memperbarui entri media sosial
 exports.updateSocial = async (req, res) => {
   try {
     const { id } = req.params;
-    const {website, link } = req.body;
+    const { platform, url, icon_class, is_active } = req.body;
 
     let updateFields = [];
     let updateValues = [];
 
-    // Jika website disediakan, periksa duplikasi dan tambahkan ke update
-    if (website) {
-        const [existingSocialByWebsite] = await db.query(
-            "SELECT id_social FROM md_social WHERE website = ? AND id_social != ?",
-            [website, id]
-        );
-        if (existingSocialByWebsite.length > 0) {
-            return res.status(409).json({ error: "Entri sosial dengan website ini sudah ada." });
-        }
-        updateFields.push("website = ?");
-        updateValues.push(website);
+    if (platform) {
+      const [existingSocialByPlatform] = await db.query(
+        "SELECT id FROM social_links WHERE platform = ? AND id != ?",
+        [platform, id]
+      );
+      if (existingSocialByPlatform.length > 0) {
+        return res.status(409).json({ error: "Entri sosial dengan platform ini sudah ada." });
+      }
+      updateFields.push("platform = ?");
+      updateValues.push(platform);
     }
 
-    if (link !== undefined) { 
-      updateFields.push("link = ?");
-      updateValues.push(link);
+    if (url !== undefined) {
+      updateFields.push("url = ?");
+      updateValues.push(url);
+    }
+    if (icon_class !== undefined) {
+      updateFields.push("icon_class = ?");
+      updateValues.push(icon_class);
+    }
+    if (is_active !== undefined) {
+      updateFields.push("is_active = ?");
+      updateValues.push(is_active);
     }
 
     if (updateFields.length === 0) {
       return res.status(400).json({ error: "Tidak ada data yang disediakan untuk diperbarui." });
     }
 
-    const query = `UPDATE md_social SET ${updateFields.join(", ")} WHERE id_social = ?`;
-    updateValues.push(id); 
+    const query = `UPDATE social_links SET ${updateFields.join(", ")} WHERE id = ?`;
+    updateValues.push(id);
     const [result] = await db.query(query, updateValues);
 
     if (result.affectedRows === 0) {
@@ -124,7 +135,7 @@ exports.updateSocial = async (req, res) => {
     console.error("Error updating social entry:", error);
     if (error.code === "ER_DUP_ENTRY") {
       res.status(409).json({
-        error: "Terjadi duplikasi entri. Website mungkin sudah terdaftar.",
+        error: "Terjadi duplikasi entri. Platform mungkin sudah terdaftar.",
         details: error.message,
       });
     } else {
@@ -133,12 +144,11 @@ exports.updateSocial = async (req, res) => {
   }
 };
 
-// Fungsi untuk menghapus entri media sosial
 exports.deleteSocial = async (req, res) => {
   try {
-    const { id } = req.params; 
+    const { id } = req.params;
     const [result] = await db.query(
-      "DELETE FROM md_social WHERE id_social = ?",
+      "DELETE FROM social_links WHERE id = ?",
       [id]
     );
 
