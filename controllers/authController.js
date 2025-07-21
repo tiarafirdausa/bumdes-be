@@ -11,6 +11,7 @@ require("dotenv").config();
 
 const JWT_SECRET = process.env.JWT_SECRET;
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || "1h";
+
 const convertExpiresInToMs = (expiresIn) => {
   const value = parseInt(expiresIn);
   if (expiresIn.endsWith("h")) {
@@ -25,7 +26,7 @@ const convertExpiresInToMs = (expiresIn) => {
 
 const generateTokenAndSetCookie = (user, statusCode, res) => {
   const token = jwt.sign(
-    { id: user.id_user, username: user.username, level: user.level },
+    { id: user.id, role: user.role, username: user.username },
     JWT_SECRET,
     { expiresIn: JWT_EXPIRES_IN }
   );
@@ -39,12 +40,13 @@ const generateTokenAndSetCookie = (user, statusCode, res) => {
 
   res.status(statusCode).json({
     user: {
-      id: user.id_user,
+      id: user.id,
       nama_lengkap: user.nama_lengkap,
       email: user.email,
       username: user.username,
-      level: user.level,
+      role: user.role,
       foto: user.foto,
+      status: user.status,
     },
   });
 };
@@ -64,7 +66,7 @@ exports.loginUser = async (req, res) => {
     }
 
     const [users] = await db.query(
-      "SELECT id_user, nama_lengkap, email, username, password, level, foto FROM user WHERE username = ?",
+      "SELECT id, name, email, username, password, role, foto, status FROM users WHERE username = ?",
       [username]
     );
     const user = users[0];
@@ -94,7 +96,7 @@ exports.loginUser = async (req, res) => {
 exports.getLoggedInUser = async (req, res) => {
   try {
     const [users] = await db.query(
-      "SELECT id_user, nama_lengkap, email, username, level, foto FROM user WHERE id_user = ?",
+      "SELECT id, name, email, username, role, foto, status FROM users WHERE id = ?",
       [req.user.id]
     );
 
@@ -146,11 +148,11 @@ exports.registerUser = async (req, res) => {
     return res.status(400).json({ errors: errors.array() });
   }
   try {
-    const { nama_lengkap, email, username, password, level } = req.body;
+    const { name, email, username, password, role, status } = req.body;
     const fotoPath = req.file
-      ? `/public/uploads/users/${req.file.filename}`
+      ? `/uploads/users/${req.file.filename}`
       : null;
-    if (!nama_lengkap || !email || !username || !password || !level) {
+    if (!name || !email || !username || !password || !role) {
       if (req.file) {
         fs.unlink(req.file.path, (unlinkErr) => {
           if (unlinkErr)
@@ -169,7 +171,7 @@ exports.registerUser = async (req, res) => {
     }
 
     const [existingUsers] = await db.query(
-      "SELECT username, email FROM user WHERE username = ? OR email = ?",
+      "SELECT username, email FROM users WHERE username = ? OR email = ?",
       [username, email]
     );
 
@@ -199,18 +201,21 @@ exports.registerUser = async (req, res) => {
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
+    const userStatus = ['active', 'suspended'].includes(status) ? status : 'active';
+
     const [result] = await db.query(
-      "INSERT INTO user (nama_lengkap, email, username, password, level, foto) VALUES (?, ?, ?, ?, ?, ?)",
-      [nama_lengkap, email, username, hashedPassword, level, fotoPath] // Use fotoPath
+      "INSERT INTO users (name, email, username, password, role, foto, status) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      [name, email, username, hashedPassword, role, fotoPath, userStatus] // Use fotoPath
     );
 
     const newUser = {
-      id_user: result.insertId,
-      nama_lengkap,
+      id: result.insertId,
+      name,
       email,
       username,
-      level,
+      role,
       foto: fotoPath,
+      status: userStatus,
     };
 
     res
@@ -237,12 +242,13 @@ exports.registerUser = async (req, res) => {
 exports.updateUser = async (req, res) => {
   const { id } = req.params;
   const {
-    nama_lengkap,
+    name,
     email,
     username,
     password,
-    level,
+    role,
     foto: fotoFromBody,
+    status,
   } = req.body;
   const newFotoPath = req.file
     ? `/uploads/users/${req.file.filename}`
@@ -254,7 +260,7 @@ exports.updateUser = async (req, res) => {
 
   try {
     const [oldUserRows] = await db.query(
-      "SELECT username, email, level, nama_lengkap, foto FROM user WHERE id_user = ?",
+      "SELECT username, email, role, name, foto, status FROM users WHERE id = ?",
       [id]
     );
 
@@ -274,15 +280,15 @@ exports.updateUser = async (req, res) => {
     const oldUser = oldUserRows[0];
     const oldFotoPath = oldUser.foto;
 
-    if (nama_lengkap !== undefined && nama_lengkap !== oldUser.nama_lengkap) {
-      updateFields.push("nama_lengkap = ?");
-      updateValues.push(nama_lengkap);
+    if (name !== undefined && name !== oldUser.name) {
+      updateFields.push("name = ?");
+      updateValues.push(name);
     }
 
     if (email !== undefined) {
       if (email !== oldUser.email) {
         const [existingEmail] = await db.query(
-          "SELECT id_user FROM user WHERE email = ? AND id_user != ?",
+          "SELECT id FROM users WHERE email = ? AND id != ?",
           [email, id]
         );
         if (existingEmail.length > 0) {
@@ -307,7 +313,7 @@ exports.updateUser = async (req, res) => {
     if (username !== undefined) {
       if (username !== oldUser.username) {
         const [existingUsername] = await db.query(
-          "SELECT id_user FROM user WHERE username = ? AND id_user != ?",
+          "SELECT id FROM users WHERE username = ? AND id != ?",
           [username, id]
         );
         if (existingUsername.length > 0) {
@@ -335,16 +341,24 @@ exports.updateUser = async (req, res) => {
       updateValues.push(hashedPassword);
     }
 
-    if (level !== undefined && level !== oldUser.level) {
-      updateFields.push("level = ?");
-      updateValues.push(level);
+    if (role !== undefined && role !== oldUser.role) {
+      updateFields.push("role = ?");
+      updateValues.push(role);
+    }
+
+    if (status !== undefined && status !== oldUser.status) {
+        if (!['active', 'suspended'].includes(status)) {
+            return res.status(400).json({ error: "Status tidak valid. Harus 'active' atau 'suspended'." });
+        }
+        updateFields.push("status = ?");
+        updateValues.push(status);
     }
 
     if (req.file) {
       updateFields.push("foto = ?");
       updateValues.push(newFotoPath);
-      if (oldFotoPath && oldFotoPath.startsWith("/public/uploads/users")) {
-        const fullOldPath = path.join(__dirname, "..", oldFotoPath);
+      if (oldFotoPath && oldFotoPath.startsWith("/uploads/users")) {
+        const fullOldPath = path.join(__dirname, "..", "public", oldFotoPath);
         if (fs.existsSync(fullOldPath)) {
           fs.unlink(fullOldPath, (unlinkErr) => {
             if (unlinkErr)
@@ -364,8 +378,8 @@ exports.updateUser = async (req, res) => {
       updateFields.push("foto = ?");
       updateValues.push(null);
       responseBody.photo_cleared = true;
-      if (oldFotoPath && oldFotoPath.startsWith("/public/uploads/users")) {
-        const fullOldPath = path.join(__dirname, "..", oldFotoPath);
+      if (oldFotoPath && oldFotoPath.startsWith("/uploads/users")) {
+        const fullOldPath = path.join(__dirname, "..", "public", oldFotoPath);
         if (fs.existsSync(fullOldPath)) {
           fs.unlink(fullOldPath, (unlinkErr) => {
             if (unlinkErr)
@@ -396,9 +410,9 @@ exports.updateUser = async (req, res) => {
         });
     }
 
-    const query = `UPDATE user SET ${updateFields.join(
+    const query = `UPDATE users SET ${updateFields.join(
       ", "
-    )} WHERE id_user = ?`;
+    )} WHERE id = ?`;
     updateValues.push(id);
 
     const [result] = await db.query(query, updateValues);
@@ -458,7 +472,7 @@ exports.updateUser = async (req, res) => {
 exports.getUsers = async (req, res) => {
   try {
     const [users] = await db.query(
-      "SELECT id_user, nama_lengkap, email, username, level, foto FROM user"
+      "SELECT id, name, email, username, role, foto, status FROM users"
     );
     res.status(200).json(users);
   } catch (error) {
@@ -475,11 +489,11 @@ exports.getUsers = async (req, res) => {
 exports.deleteUser = async (req, res) => {
   try {
     const { id } = req.params;
-    const [user] = await db.query("SELECT foto FROM user WHERE id_user = ?", [
+    const [user] = await db.query("SELECT foto FROM users WHERE id = ?", [
       id,
     ]);
     const fotoPathToDelete = user.length > 0 ? user[0].foto : null;
-    const [result] = await db.query("DELETE FROM user WHERE id_user = ?", [id]);
+    const [result] = await db.query("DELETE FROM users WHERE id = ?", [id]);
 
     if (result.affectedRows === 0) {
       return res.status(404).json({ error: "Pengguna tidak ditemukan." });
@@ -487,9 +501,9 @@ exports.deleteUser = async (req, res) => {
 
     if (
       fotoPathToDelete &&
-      fotoPathToDelete.startsWith("/public/uploads/users")
+      fotoPathToDelete.startsWith("/uploads/users")
     ) {
-      const fullPath = path.join(__dirname, "..", fotoPathToDelete);
+      const fullPath = path.join(__dirname, "..", "public", fotoPathToDelete);
       if (fs.existsSync(fullPath)) {
         fs.unlink(fullPath, (err) => {
           if (err)
@@ -511,7 +525,7 @@ exports.getUserById = async (req, res) => {
   try {
     const { id } = req.params;
     const [users] = await db.query(
-      "SELECT id_user, username, nama_lengkap, email, level, foto FROM user WHERE id_user = ?",
+      "SELECT id, username, name, email, role, foto, status FROM users WHERE id = ?",
       [id]
     );
 
@@ -520,7 +534,7 @@ exports.getUserById = async (req, res) => {
     }
 
     const user = users[0];
-    delete user.password;
+    // delete user.password;
 
     res.status(200).json({ user: user });
   } catch (error) {
@@ -542,7 +556,7 @@ exports.forgotPassword = async (req, res) => {
 
     try {
         const [users] = await db.query(
-            "SELECT id_user, username, email FROM user WHERE email = ?",
+            "SELECT id, username, email FROM users WHERE email = ?",
             [email]
         );
 
@@ -554,11 +568,11 @@ exports.forgotPassword = async (req, res) => {
         const resetToken = crypto.randomBytes(32).toString('hex');
         const passwordResetToken = crypto.createHash('sha256').update(resetToken).digest('hex');
 
-        const resetPasswordExpires = new Date(Date.now() + 60 * 60 * 1000); // 1 jam
+        const resetPasswordExpires = new Date(Date.now() + 60 * 60 * 1000); 
 
         await db.query(
-            "UPDATE user SET resetPasswordToken = ?, resetPasswordExpires = ? WHERE id_user = ?",
-            [passwordResetToken, resetPasswordExpires, user.id_user]
+            "UPDATE users SET resetPasswordToken = ?, resetPasswordExpires = ? WHERE id = ?",
+            [passwordResetToken, resetPasswordExpires, user.id]
         );
 
         const resetUrl = `${process.env.FRONTEND_URL}/reset-password?token=${resetToken}`;
@@ -581,8 +595,8 @@ exports.forgotPassword = async (req, res) => {
             res.status(200).json({ message: 'Email reset password berhasil dikirim.' });
         } catch (emailError) {
             await db.query(
-                "UPDATE user SET resetPasswordToken = NULL, resetPasswordExpires = NULL WHERE id_user = ?",
-                [user.id_user]
+                "UPDATE users SET resetPasswordToken = NULL, resetPasswordExpires = NULL WHERE id = ?",
+                [user.id]
             );
             console.error("Error sending email:", emailError);
             return res.status(500).json({ error: 'Gagal mengirim email reset password. Silakan coba lagi nanti.', details: emailError.message });
@@ -599,8 +613,6 @@ exports.resetPassword = async (req, res) => {
     const { token } = req.query;
     const { password } = req.body;
 
-    console.log('Token received from frontend (raw):', token); // Debugging
-
     if (!password) {
         return res.status(400).json({ error: 'Password baru wajib diisi.' });
     }
@@ -609,16 +621,11 @@ exports.resetPassword = async (req, res) => {
     }
 
     try {
-        // --- PERBAIKAN UTAMA DI SINI ---
-        // HASH TOKEN YANG DITERIMA DARI FRONTEND HANYA SEKALI
-        // Gunakan nama variabel yang jelas, misal `hashedReceivedToken`
         const hashedReceivedToken = crypto.createHash('sha256').update(token).digest('hex');
-        console.log('Token hashed by backend (for comparison):', hashedReceivedToken); // Debugging
 
-        // Kemudian gunakan `hashedReceivedToken` ini dalam query database
         const [users] = await db.query(
-            "SELECT id_user FROM user WHERE resetPasswordToken = ? AND resetPasswordExpires > NOW()",
-            [hashedReceivedToken] // <-- Gunakan `hashedReceivedToken` di sini
+            "SELECT id FROM users WHERE resetPasswordToken = ? AND resetPasswordExpires > NOW()",
+            [hashedReceivedToken] 
         );
 
         const user = users[0];
@@ -629,8 +636,8 @@ exports.resetPassword = async (req, res) => {
         const hashedPassword = await bcrypt.hash(password, 10);
 
         await db.query(
-            "UPDATE user SET password = ?, resetPasswordToken = NULL, resetPasswordExpires = NULL WHERE id_user = ?",
-            [hashedPassword, user.id_user]
+            "UPDATE users SET password = ?, resetPasswordToken = NULL, resetPasswordExpires = NULL WHERE id = ?",
+            [hashedPassword, user.id]
         );
 
         res.status(200).json({ message: 'Password berhasil direset. Silakan login dengan password baru Anda.' });
