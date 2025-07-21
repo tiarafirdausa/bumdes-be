@@ -1,19 +1,19 @@
 const db = require("../models/db");
 
 exports.createMenu = async (req, res) => {
-  const { judul, id_induk, jenis_link, link, urut } = req.body;
+  const { judul, induk, jenis_link, link, urut } = req.body;
   const kategori_menu = "main";
   try {
     const [result] = await db.query(
       "INSERT INTO menu (judul, kategori_menu, induk, jenis_link, link, urut) VALUES (?, ?, ?, ?, ?, ?)",
-      [judul, kategori_menu, id_induk, jenis_link, link, urut]
+      [judul, kategori_menu, induk, jenis_link, link, urut]
     );
 
     res.status(201).json({
       id: result.insertId,
       judul,
       kategori_menu,
-      id_induk,
+      induk,
       jenis_link,
       link,
       urut,
@@ -61,12 +61,12 @@ exports.getMenu = async (req, res) => {
 
 exports.updateMenu = async (req, res) => {
   const { id } = req.params;
-  const { judul, id_induk, jenis_link, link, urut } = req.body;
+  const { judul, induk, jenis_link, link, urut } = req.body;
   const kategori_menu = "main";
   try {
     const [result] = await db.query(
       "UPDATE menu SET judul = ?, kategori_menu = ?, induk = ?, jenis_link = ?, link = ?, urut = ? WHERE id_menu = ?",
-      [judul, kategori_menu, id_induk, jenis_link, link, urut, id]
+      [judul, kategori_menu, induk, jenis_link, link, urut, id]
     );
 
     if (result.affectedRows === 0) {

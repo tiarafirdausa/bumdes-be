@@ -32,7 +32,7 @@ exports.createArtikel = async (req, res) => {
     }
 
     const gambarPath = req.file
-      ? `/public/uploads/artikel/${req.file.filename}`
+      ? `/uploads/artikel/${req.file.filename}`
       : "";
 
     let judul_seo = req.body.judul_seo;

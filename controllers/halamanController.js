@@ -23,7 +23,7 @@ exports.createHalaman = async (req, res) => {
     }
 
     const gambarPath = req.file
-      ? `/public/uploads/halaman/${req.file.filename}`
+      ? `/uploads/halaman/${req.file.filename}`
       : "";
 
     let judul_seo = req.body.judul_seo;
@@ -261,6 +261,7 @@ exports.updateHalaman = async (req, res) => {
       }
     }
 
+    console.log("data:", updateFields);
     if (updateFields.length === 0) {
       return res
         .status(400)
