@@ -82,7 +82,7 @@ exports.userProfileImageUpload = multer({
 });
 
 exports.settingImageUpload = multer({
-  storage: createStorage("setting"),
+  storage: createStorage("settings"),
   fileFilter: imageFileFilter,
   limits: { fileSize: 2 * 1024 * 1024 },
 }).fields([

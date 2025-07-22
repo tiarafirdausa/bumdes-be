@@ -1,170 +1,196 @@
 // controllers/settingController.js
-const db = require("../models/db"); // Sesuaikan path ini ke file koneksi DB Anda
+const db = require("../models/db");
 const path = require("path");
 const fs = require("fs");
 
-exports.getSettings = async (req, res) => {
-  try {
-    const [settings] = await db.query("SELECT parameter, nilai FROM setting");
-
-    const settingsObject = {};
-    settings.forEach((setting) => {
-      settingsObject[setting.parameter] = setting.nilai;
-    });
-    res.status(200).json(settingsObject);
-  } catch (error) {
-    console.error("Error fetching settings:", error);
-    res
-      .status(500)
-      .json({ error: "Gagal mengambil pengaturan", details: error.message });
+// Helper untuk menginterpretasikan nilai berdasarkan tipe
+const parseSettingValue = (value, type) => {
+  switch (type) {
+    case 'boolean':
+      return value === 'true' || value === '1';
+    case 'number':
+      return Number(value);
+    case 'json':
+      try {
+        return JSON.parse(value);
+      } catch (e) {
+        console.error("Error parsing JSON setting:", value, e);
+        return value;
+      }
+    case 'string':
+    case 'text':
+    case 'image':
+    default:
+      return value;
   }
 };
 
-exports.updateSettings = async (req, res) => {
+// Helper untuk mengonversi nilai ke string untuk penyimpanan DB
+const serializeSettingValue = (value, type) => {
+    if (value === null || value === undefined) return null;
+    switch (type) {
+        case 'boolean':
+            return value ? 'true' : 'false';
+        case 'number':
+            return String(value);
+        case 'json':
+            return JSON.stringify(value);
+        case 'string':
+        case 'text':
+        case 'image':
+        default:
+            return String(value);
+    }
+};
+
+// Helper untuk menghapus file gambar lama
+const deleteOldImage = (oldPath) => {
+  if (oldPath && oldPath.startsWith("/uploads/settings/")) { 
+    const fullOldPath = path.join(__dirname, "..", "public", oldPath);
+    if (fs.existsSync(fullOldPath)) {
+      fs.unlink(fullOldPath, (unlinkErr) => {
+        if (unlinkErr) console.error("Error deleting old setting image file:", fullOldPath, unlinkErr);
+        else console.log("Old setting image file deleted:", fullOldPath);
+      });
+    }
+  }
+};
+
+// Fungsi untuk mendapatkan semua pengaturan
+exports.getSettings = async (req, res) => {
   try {
-    const {
-      judul,
-      deskripsi,
-      url,
-      keyword,
-      folder,
-      judulpendek,
-      alamat,
-      phone,
-      power,
-      powerurl,
-      email,
-      secret_key,
-      "data-sitekey": data_sitekey, 
-      googleverification,
-      theme, 
-      Maps_embed,
-    } = req.body;
+    const [settingsRows] = await db.query("SELECT `group`, `key`, `value`, `type` FROM settings");
 
-    let responseBody = {};
-
-    const [currentSettingsRows] = await db.query(
-      "SELECT parameter, nilai FROM setting"
-    );
-    const currentSettings = {};
-    currentSettingsRows.forEach((row) => {
-      currentSettings[row.parameter] = row.nilai;
+    const settingsObject = {};
+    settingsRows.forEach((setting) => {
+      if (!settingsObject[setting.group]) {
+        settingsObject[setting.group] = {};
+      }
+      settingsObject[setting.group][setting.key] = parseSettingValue(setting.value, setting.type);
     });
 
-    const updateSingleSetting = async (parameterName, newValue, oldValue) => {
-      let valueToStore = newValue;
+    res.status(200).json(settingsObject);
+  } catch (error) {
+    console.error("Error fetching settings:", error);
+    res.status(500).json({ error: "Gagal mengambil pengaturan", details: error.message });
+  }
+};
 
-      if (newValue === undefined) {
-        return; 
-      }
+// Fungsi untuk memperbarui pengaturan
+exports.updateSettings = async (req, res) => {
+  let connection; 
+  try {
+    const {
+      site_title,
+      site_description,
+      maintenance_mode, 
+      meta_keywords, 
+      meta_description, 
+      mail_from_address,
+      mail_from_name,
+      smtp_host,
+      smtp_port, 
+      smtp_username,
+      smtp_password,
+      twitter,
+      linkedin,
+      // ... tambahkan key lain sesuai kebutuhan
+      // Untuk gambar, kita akan menggunakan req.files
+      // Untuk menghapus gambar, klien bisa mengirim key dengan nilai null atau string kosong
+      clear_logo, // boolean flag dari body
+      clear_ikon, // boolean flag dari body
+    } = req.body;
 
-      if (valueToStore !== oldValue) {
-        console.log(`Updating setting: ${parameterName} from '${oldValue}' to '${valueToStore}'`);
-        await db.query("UPDATE setting SET nilai = ? WHERE parameter = ?", [
-          valueToStore,
-          parameterName,
-        ]);
-      } else {
-        console.log(`Setting ${parameterName} value is same as old: '${oldValue}'. No update needed.`);
-      }
-    };
-
+    // File yang diupload melalui Multer
     const ikonFile = req.files && req.files.ikon ? req.files.ikon[0] : null;
     const logoFile = req.files && req.files.logo ? req.files.logo[0] : null;
 
-    const oldIkonPath = currentSettings.ikon;
-    const oldLogoPath = currentSettings.logo;
+    // Ambil pengaturan saat ini dari database untuk perbandingan dan penghapusan file lama
+    const [currentSettingsRows] = await db.query("SELECT `key`, `value`, `type` FROM settings");
+    const currentSettingsMap = new Map(currentSettingsRows.map(s => [s.key, { value: s.value, type: s.type }]));
+
+    connection = await db.getConnection();
+    await connection.beginTransaction();
+
+    const updateSingleSetting = async (key, newValue, type) => {
+      const current = currentSettingsMap.get(key);
+      const oldValue = current ? parseSettingValue(current.value, current.type) : undefined;
+      const valueToStore = serializeSettingValue(newValue, type);
+
+      // Hanya update jika nilai berubah
+      if (newValue !== undefined && valueToStore !== current?.value) {
+        await connection.query(
+          "UPDATE settings SET `value` = ?, `type` = ? WHERE `key` = ?",
+          [valueToStore, type, key]
+        );
+        console.log(`Updated setting: ${key} from '${oldValue}' to '${newValue}' (stored as '${valueToStore}')`);
+      } else {
+        console.log(`Setting ${key} value is same as old: '${oldValue}'. No update needed.`);
+      }
+    };
+
+    // --- Update pengaturan teks/nilai ---
+    await updateSingleSetting("site_title", site_title, "string");
+    await updateSingleSetting("site_description", site_description, "text");
+    await updateSingleSetting("maintenance_mode", maintenance_mode, "boolean");
+    await updateSingleSetting("meta_keywords", meta_keywords, "text");
+    await updateSingleSetting("meta_description", meta_description, "text");
+    await updateSingleSetting("mail_from_address", mail_from_address, "string");
+    await updateSingleSetting("mail_from_name", mail_from_name, "string");
+    await updateSingleSetting("smtp_host", smtp_host, "string");
+    await updateSingleSetting("smtp_port", smtp_port, "number");
+    await updateSingleSetting("smtp_username", smtp_username, "string");
+    await updateSingleSetting("smtp_password", smtp_password, "string");
+    await updateSingleSetting("twitter", twitter, "string");
+    await updateSingleSetting("linkedin", linkedin, "string");
+    // ... panggil updateSingleSetting untuk semua key lain yang Anda miliki
+
+    // --- Penanganan Gambar (ikon dan logo) ---
+    const currentIkonValue = currentSettingsMap.get('ikon')?.value;
+    const currentLogoValue = currentSettingsMap.get('logo')?.value;
 
     // Ikon handling
     if (ikonFile) {
-      const newIkonPath = `/uploads/setting/${ikonFile.filename}`;
-      await updateSingleSetting("ikon", newIkonPath, oldIkonPath);
-      // Hapus ikon lama jika ada dan merupakan path yang valid
-      if (oldIkonPath && oldIkonPath.startsWith("/uploads/setting")) {
-        const fullOldPath = path.join(__dirname, "..", "public", oldIkonPath);
-        if (fs.existsSync(fullOldPath)) {
-          fs.unlink(fullOldPath, (err) => {
-            if (err) console.error("Error deleting old ikon file:", err);
-          });
-        }
-      }
-      responseBody.new_ikon_path = newIkonPath;
-    } else if (req.body.ikon === "") { // Frontend mengirim string kosong untuk menghapus
-      await updateSingleSetting("ikon", null, oldIkonPath); // Set ke null di DB
-      if (oldIkonPath && oldIkonPath.startsWith("/uploads/setting")) {
-        const fullOldPath = path.join(__dirname, "..", "public", oldIkonPath);
-        if (fs.existsSync(fullOldPath)) {
-          fs.unlink(fullOldPath, (err) => {
-            if (err) console.error("Error deleting cleared ikon file:", err);
-          });
-        }
-      }
-      responseBody.ikon_cleared = true;
+      const newIkonPath = `/uploads/settings/${ikonFile.filename}`;
+      await updateSingleSetting("ikon", newIkonPath, "image");
+      deleteOldImage(currentIkonValue); // Hapus ikon lama
+    } else if (clear_ikon === true) { // Jika klien meminta untuk menghapus ikon
+      await updateSingleSetting("ikon", null, "image");
+      deleteOldImage(currentIkonValue); // Hapus ikon lama
     }
 
     // Logo handling
     if (logoFile) {
-      const newLogoPath = `/uploads/setting/${logoFile.filename}`;
-      await updateSingleSetting("logo", newLogoPath, oldLogoPath);
-      if (oldLogoPath && oldLogoPath.startsWith("/uploads/setting")) {
-        const fullOldPath = path.join(__dirname, "..", "public", oldLogoPath);
-        if (fs.existsSync(fullOldPath)) {
-          fs.unlink(fullOldPath, (err) => {
-            if (err) console.error("Error deleting old logo file:", err);
-          });
-        }
-      }
-      responseBody.new_logo_path = newLogoPath;
-    } else if (req.body.logo === "") {
-      await updateSingleSetting("logo", null, oldLogoPath);
-      if (oldLogoPath && oldLogoPath.startsWith("/uploads/setting")) {
-        const fullOldPath = path.join(__dirname, "..", "public", oldLogoPath);
-        if (fs.existsSync(fullOldPath)) {
-          fs.unlink(fullOldPath, (err) => {
-            if (err) console.error("Error deleting cleared logo file:", err);
-          });
-        }
-      }
-      responseBody.logo_cleared = true;
+      const newLogoPath = `/uploads/settings/${logoFile.filename}`;
+      await updateSingleSetting("logo", newLogoPath, "image");
+      deleteOldImage(currentLogoValue); // Hapus logo lama
+    } else if (clear_logo === true) { // Jika klien meminta untuk menghapus logo
+      await updateSingleSetting("logo", null, "image");
+      deleteOldImage(currentLogoValue); // Hapus logo lama
     }
 
-    // Update other text fields
-    await updateSingleSetting("judul", judul, currentSettings.judul);
-    await updateSingleSetting("deskripsi", deskripsi, currentSettings.deskripsi);
-    await updateSingleSetting("url", url, currentSettings.url);
-    await updateSingleSetting("keyword", keyword, currentSettings.keyword);
-    await updateSingleSetting("folder", folder, currentSettings.folder);
-    await updateSingleSetting("judulpendek", judulpendek, currentSettings.judulpendek);
-    await updateSingleSetting("alamat", alamat, currentSettings.alamat);
-    await updateSingleSetting("phone", phone, currentSettings.phone);
-    await updateSingleSetting("power", power, currentSettings.power);
-    await updateSingleSetting("powerurl", powerurl, currentSettings.powerurl);
-    await updateSingleSetting("email", email, currentSettings.email);
-    await updateSingleSetting("secret_key", secret_key, currentSettings.secret_key);
-    await updateSingleSetting("data-sitekey", data_sitekey, currentSettings["data-sitekey"]);
-    await updateSingleSetting("googleverification", googleverification, currentSettings.googleverification);
-    await updateSingleSetting("theme", theme, currentSettings.theme); 
-    await updateSingleSetting("Maps_embed", Maps_embed, currentSettings.Maps_embed);
+    await connection.commit(); // Commit transaksi
 
     res.status(200).json({
       message: "Pengaturan berhasil diperbarui!",
-      ...responseBody,
-      updated_fields: req.body,
+      // Anda bisa mengembalikan pengaturan yang diupdate jika perlu
+      // new_ikon_path: ikonFile ? `/uploads/settings/${ikonFile.filename}` : undefined,
+      // new_logo_path: logoFile ? `/uploads/settings/${logoFile.filename}` : undefined,
     });
   } catch (error) {
-    console.error("Error updating setting:", error);
+    console.error("Error updating settings:", error);
+    if (connection) await connection.rollback(); // Rollback transaksi jika ada error
+
+    // Hapus file yang baru diupload jika terjadi kesalahan database
     if (req.files && req.files.ikon && req.files.ikon[0]) {
-      fs.unlink(req.files.ikon[0].path, (unlinkErr) => {
-        if (unlinkErr) console.error("Error deleting uploaded ikon on failure:", unlinkErr);
-      });
+      deleteOldImage(`/uploads/settings/${req.files.ikon[0].filename}`);
     }
     if (req.files && req.files.logo && req.files.logo[0]) {
-      fs.unlink(req.files.logo[0].path, (unlinkErr) => {
-        if (unlinkErr) console.error("Error deleting uploaded logo on failure:", unlinkErr);
-      });
+      deleteOldImage(`/uploads/settings/${req.files.logo[0].filename}`);
     }
-    res
-      .status(500)
-      .json({ error: "Gagal memperbarui pengaturan", details: error.message });
+
+    res.status(500).json({ error: "Gagal memperbarui pengaturan", details: error.message });
+  } finally {
+    if (connection) connection.release();
   }
 };
