@@ -17,7 +17,7 @@ const commentRoute = require("./routes/commentRoute");
 const settingRoute = require("./routes/settingRoute");
 const socialRoute = require("./routes/socialRoute");
 const uploadRoute = require("./routes/uploadRoute");
-const galeriRoute = require("./routes/galeriRoute");
+const mediaRoute = require("./routes/mediaRoute");
 const tagRoute = require("./routes/tagRoute");
 
 const generateCsrfToken = require("./middleware/csrfMiddleware");
@@ -69,7 +69,7 @@ app.use("/comments", commentRoute);
 app.use("/settings", settingRoute);
 app.use("/socials", socialRoute);
 app.use("/upload", uploadRoute);
-app.use("/galeri", galeriRoute);
+app.use("/media", mediaRoute);
 app.use("/tags", tagRoute);
 
 app.use((err, req, res, next) => {

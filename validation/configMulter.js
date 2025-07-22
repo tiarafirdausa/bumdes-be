@@ -102,8 +102,8 @@ exports.tinymceVideoUpload = multer({
   limits: { fileSize: 10 * 1024 * 1024 }, 
 });
 
-exports.galeriUpload = multer({
-    storage: createStorage("galeri"),
+exports.mediaUpload = multer({
+    storage: createStorage("media"),
     fileFilter: mediaFileFilter,     
     limits: { fileSize: 10 * 1024 * 1024 },
 }).array("media", 10);
