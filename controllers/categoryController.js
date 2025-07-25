@@ -1,6 +1,7 @@
+// controllers/categoryController.js
 const db = require("../models/db");
 
-exports.createCategory = async (req, res) => { 
+exports.createCategory = async (req, res) => {
   try {
     const { name } = req.body;
     if (!name) {
@@ -9,7 +10,7 @@ exports.createCategory = async (req, res) => {
         .json({ error: "Nama kategori tidak boleh kosong." });
     }
 
-    const [existingCategory] = await db.query( 
+    const [existingCategory] = await db.query(
       "SELECT id FROM categories WHERE name = ?",
       [name]
     );
@@ -26,6 +27,25 @@ exports.createCategory = async (req, res) => {
         .replace(/\s+/g, "-")
         .replace(/[^a-z0-9-]/g, "");
     }
+
+    const [existingCategoryBySlug] = await db.query(
+        "SELECT id FROM categories WHERE slug = ?",
+        [slug]
+    );
+    if (existingCategoryBySlug.length > 0) {
+        let suffix = 1;
+        let uniqueSlug = slug;
+        while (existingCategoryBySlug.length > 0) {
+            uniqueSlug = `${slug}-${suffix}`;
+            [existingCategoryBySlug] = await db.query(
+                "SELECT id FROM categories WHERE slug = ?",
+                [uniqueSlug]
+            );
+            suffix++;
+        }
+        slug = uniqueSlug;
+    }
+
 
     const [result] = await db.query(
       "INSERT INTO categories (name, slug) VALUES (?, ?)",
@@ -54,66 +74,97 @@ exports.createCategory = async (req, res) => {
   }
 };
 
-exports.getCategories = async (req, res) => { 
-  try {
-    const [categories] = await db.query( 
-      "SELECT id, name, slug FROM categories ORDER BY name ASC"
-    );
-    res.status(200).json(categories);
-  } catch (error) {
-    console.error("Error fetching categories:", error); 
-    res
-      .status(500)
-      .json({
-        error: "Gagal mengambil daftar kategori",
-        details: error.message,
-      });
-  }
+exports.getCategories = async (req, res) => {
+    try {
+        const { query, pageIndex = 1, pageSize = 10, sort = {} } = req.query;
+
+        let sql = "SELECT id, name, slug, created_at, updated_at FROM categories"; 
+        let countSql = "SELECT COUNT(id) AS total FROM categories";
+
+        const params = [];
+        const countParams = [];
+
+        if (query) {
+            const searchQuery = `%${query}%`;
+            sql += " WHERE name LIKE ? OR slug LIKE ?";
+            countSql += " WHERE name LIKE ? OR slug LIKE ?";
+            params.push(searchQuery, searchQuery);
+            countParams.push(searchQuery, searchQuery);
+        }
+
+        if (sort.key && sort.order) {
+            const validSortKeys = ['name', 'created_at', 'updated_at', 'slug'];
+            if (validSortKeys.includes(sort.key)) {
+                const order = sort.order.toUpperCase() === 'DESC' ? 'DESC' : 'ASC';
+                sql += ` ORDER BY ${sort.key} ${order}`;
+            } else {
+                sql += " ORDER BY name ASC";
+            }
+        } else {
+            sql += " ORDER BY name ASC";
+        }
+
+        const offset = (parseInt(pageIndex) - 1) * parseInt(pageSize);
+        sql += " LIMIT ? OFFSET ?";
+        params.push(parseInt(pageSize), offset);
+
+        const [categories] = await db.query(sql, params);
+        const [totalResult] = await db.query(countSql, countParams);
+        const total = totalResult[0].total;
+
+        res.status(200).json({ categories, total });
+    } catch (error) {
+        console.error("Error fetching categories:", error);
+        res.status(500).json({
+            error: "Gagal mengambil daftar kategori",
+            details: error.message,
+        });
+    }
 };
 
-exports.getCategoryById = async (req, res) => { 
+exports.getCategoryById = async (req, res) => {
   try {
     const { id } = req.params;
-    const [category] = await db.query( 
-      "SELECT id, name, slug FROM categories WHERE id = ?",
+    const [category] = await db.query(
+      "SELECT id, name, slug, created_at, updated_at FROM categories WHERE id = ?", 
       [id]
     );
 
-    if (category.length === 0) { 
+    if (category.length === 0) {
       return res.status(404).json({ error: "Kategori tidak ditemukan" });
     }
 
-    res.status(200).json(category[0]); 
+    res.status(200).json(category[0]);
   } catch (error) {
-    console.error("Error fetching category by ID:", error); 
+    console.error("Error fetching category by ID:", error);
     res
       .status(500)
       .json({ error: "Gagal mengambil kategori", details: error.message });
   }
 };
 
-exports.getCategoryBySlug = async (req, res) => { 
+exports.getCategoryBySlug = async (req, res) => {
   try {
     const { slug } = req.params;
-    const [category] = await db.query( 
-      "SELECT id, name, slug FROM categories WHERE slug = ?",
+    const [category] = await db.query(
+      "SELECT id, name, slug, created_at, updated_at FROM categories WHERE slug = ?", 
       [slug]
     );
 
-    if (category.length === 0) { 
+    if (category.length === 0) {
       return res.status(404).json({ error: "Kategori tidak ditemukan" });
     }
 
-    res.status(200).json(category[0]); 
+    res.status(200).json(category[0]);
   } catch (error) {
-    console.error("Error fetching category by slug:", error); 
+    console.error("Error fetching category by slug:", error);
     res
       .status(500)
       .json({ error: "Gagal mengambil kategori", details: error.message });
   }
 };
 
-exports.updateCategory = async (req, res) => { 
+exports.updateCategory = async (req, res) => {
   try {
     const { id } = req.params;
     const { name, slug } = req.body;
@@ -122,7 +173,7 @@ exports.updateCategory = async (req, res) => {
     let updateValues = [];
 
     if (name) {
-      const [existingCategory] = await db.query( 
+      const [existingCategory] = await db.query(
         "SELECT id FROM categories WHERE name = ? AND id != ?",
         [name, id]
       );
@@ -135,6 +186,13 @@ exports.updateCategory = async (req, res) => {
       updateValues.push(name);
     }
     if (slug) {
+        const [existingCategoryBySlug] = await db.query(
+            "SELECT id FROM categories WHERE slug = ? AND id != ?",
+            [slug, id]
+        );
+        if (existingCategoryBySlug.length > 0) {
+            return res.status(409).json({ error: "Kategori dengan slug ini sudah ada." });
+        }
       updateFields.push("slug = ?");
       updateValues.push(slug);
     }
@@ -147,7 +205,7 @@ exports.updateCategory = async (req, res) => {
 
     const query = `UPDATE categories SET ${updateFields.join(
       ", "
-    )} WHERE id = ?`;
+    )}, updated_at = NOW() WHERE id = ?`; 
     updateValues.push(id);
 
     const [result] = await db.query(query, updateValues);
@@ -162,7 +220,7 @@ exports.updateCategory = async (req, res) => {
 
     res.status(200).json({ message: "Kategori berhasil diperbarui" });
   } catch (error) {
-    console.error("Error updating category:", error); 
+    console.error("Error updating category:", error);
     if (error.code === "ER_DUP_ENTRY") {
       res
         .status(409)
@@ -193,7 +251,7 @@ exports.deleteCategory = async (req, res) => {
 
     res.status(200).json({ message: "Kategori berhasil dihapus" });
   } catch (error) {
-    console.error("Error deleting category:", error); // Updated console error
+    console.error("Error deleting category:", error); 
     res
       .status(500)
       .json({ error: "Gagal menghapus kategori", details: error.message });
