@@ -58,19 +58,19 @@ app.use("/auth/login", loginLimiter);
 app.use("/auth/register", registerLimiter);
 app.use("/auth/forgot-password", forgotPasswordLimiter);
 
-app.use("/menu-definitions", menuRoute);
-app.use("/menu-items", menuItemRoute); 
-app.use("/auth", authRoute);
-app.use("/categories", categoryRoute);
-app.use("/posts", postRoute);
-app.use("/pages", pageRoute);
-app.use("/dashboard", dashboardRoute);
-app.use("/comments", commentRoute);
-app.use("/settings", settingRoute);
-app.use("/socials", socialRoute);
-app.use("/upload", uploadRoute);
-app.use("/media", mediaRoute);
-app.use("/tags", tagRoute);
+app.use("/api/menu-definitions", menuRoute);
+app.use("/api/menu-items", menuItemRoute); 
+app.use("/api/auth", authRoute);
+app.use("/api/categories", categoryRoute);
+app.use("/api/posts", postRoute);
+app.use("/api/pages", pageRoute);
+app.use("/api/dashboard", dashboardRoute);
+app.use("/api/comments", commentRoute);
+app.use("/api/settings", settingRoute);
+app.use("/api/socials", socialRoute);
+app.use("/api/upload", uploadRoute);
+app.use("/api/media", mediaRoute);
+app.use("/api/tags", tagRoute);
 
 app.use((err, req, res, next) => {
   if (err.message === "CSRF token tidak valid atau tidak ada.") {
