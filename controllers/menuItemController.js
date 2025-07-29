@@ -116,27 +116,68 @@ exports.createMenuItem = async (req, res) => {
 };
 
 exports.getAllMenuItems = async (req, res) => {
-  try {
-    const { menuId } = req.query; 
-    let query = `SELECT id, menu_id, parent_id, title, url, type, reference_id, target, \`order\`, created_at, updated_at FROM menu_items`;
-    const params = [];
+    try {
+        const {
+            menuId,
+            pageIndex = 1,
+            pageSize = 10,
+            query = '',
+            sort = {},
+        } = req.query;
 
-    if (menuId) {
-      query += ` WHERE menu_id = ?`;
-      params.push(menuId);
+        if (!menuId) {
+            return res.status(400).json({ error: "Parameter 'menuId' wajib diisi untuk mengambil item menu." });
+        }
+
+        const offset = (parseInt(pageIndex) - 1) * parseInt(pageSize);
+
+        let whereClause = ' WHERE menu_id = ?'; 
+        let queryParams = [menuId];
+
+        if (query) {
+            whereClause += ' AND title LIKE ?';
+            queryParams.push(`%${query}%`);
+        }
+
+        let orderByClause = ' ORDER BY parent_id ASC, `order` ASC, title ASC'; // Default sort
+
+        if (sort.order && sort.key) {
+            const sortOrder = sort.order === 'desc' ? 'DESC' : 'ASC';
+            const allowedSortKeys = ['title', 'type', 'order', 'created_at', 'updated_at'];
+            if (allowedSortKeys.includes(sort.key)) {
+                // Jika ingin sort berdasarkan key lain, tambahkan di awal atau di akhir default sort
+                // Contoh: `ORDER BY ${sort.key} ${sortOrder}, parent_id ASC, \`order\` ASC`
+                // Atau: `ORDER BY parent_id ASC, \`order\` ASC, ${sort.key} ${sortOrder}`
+                orderByClause = ` ORDER BY ${sort.key} ${sortOrder}, parent_id ASC, \`order\` ASC`;
+            }
+        }
+
+        const [totalResult] = await db.query(
+            `SELECT COUNT(id) AS total FROM menu_items${whereClause}`,
+            queryParams
+        );
+        const total = totalResult[0].total;
+
+        const [menuItems] = await db.query(
+            `SELECT id, menu_id, parent_id, title, url, type, reference_id, target, \`order\`, created_at, updated_at FROM menu_items${whereClause}${orderByClause} LIMIT ?, ?`,
+            [...queryParams, offset, parseInt(pageSize)]
+        );
+
+        res.status(200).json({
+            data: menuItems,
+            total,
+            pageIndex: parseInt(pageIndex),
+            pageSize: parseInt(pageSize),
+        });
+    } catch (error) {
+        console.error("Error fetching menu items:", error);
+        res.status(500).json({
+            error: "Gagal mengambil daftar item menu",
+            details: error.message,
+        });
     }
-    query += ` ORDER BY menu_id ASC, parent_id ASC, \`order\` ASC`;
-
-    const [menuItems] = await db.query(query, params);
-    res.status(200).json(menuItems);
-  } catch (error) {
-    console.error("Error fetching menu items:", error);
-    res.status(500).json({
-      error: "Gagal mengambil daftar item menu",
-      details: error.message,
-    });
-  }
 };
+
 
 exports.getMenuItemById = async (req, res) => {
   try {

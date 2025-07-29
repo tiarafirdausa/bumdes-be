@@ -49,19 +49,58 @@ exports.createMenu = async (req, res) => {
   }
 };
 
-exports.getAllMenus = async (req, res) => { 
-  try {
-    const [menus] = await db.query(
-      "SELECT id, name, slug, created_at, updated_at FROM menus ORDER BY name ASC"
-    );
-    res.status(200).json(menus);
-  } catch (error) {
-    console.error("Error fetching menu definitions:", error);
-    res.status(500).json({
-      error: "Gagal mengambil daftar definisi menu",
-      details: error.message,
-    });
-  }
+exports.getAllMenus = async (req, res) => {
+    try {
+        const {
+            pageIndex = 1,
+            pageSize = 10,
+            query = '', 
+            sort = {},
+        } = req.query;
+
+        const offset = (parseInt(pageIndex) - 1) * parseInt(pageSize);
+
+        let whereClause = '';
+        let queryParams = [];
+
+        if (query) {
+            whereClause += ' WHERE name LIKE ? OR slug LIKE ?';
+            queryParams.push(`%${query}%`, `%${query}%`);
+        }
+
+        let orderByClause = ' ORDER BY name ASC'; 
+        if (sort.order && sort.key) {
+            const sortOrder = sort.order === 'desc' ? 'DESC' : 'ASC';
+            const allowedSortKeys = ['name', 'slug', 'created_at', 'updated_at'];
+            if (allowedSortKeys.includes(sort.key)) {
+                orderByClause = ` ORDER BY ${sort.key} ${sortOrder}`;
+            }
+        }
+
+        const [totalResult] = await db.query(
+            `SELECT COUNT(id) AS total FROM menus${whereClause}`,
+            queryParams
+        );
+        const total = totalResult[0].total;
+
+        const [menus] = await db.query(
+            `SELECT id, name, slug, created_at, updated_at FROM menus${whereClause}${orderByClause} LIMIT ?, ?`,
+            [...queryParams, offset, parseInt(pageSize)]
+        );
+
+        res.status(200).json({
+            data: menus,
+            total,
+            pageIndex: parseInt(pageIndex),
+            pageSize: parseInt(pageSize),
+        });
+    } catch (error) {
+        console.error("Error fetching menu definitions:", error);
+        res.status(500).json({
+            error: "Gagal mengambil daftar definisi menu",
+            details: error.message,
+        });
+    }
 };
 
 exports.getMenuById = async (req, res) => {

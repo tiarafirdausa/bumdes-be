@@ -1,47 +1,9 @@
 // routes/dashboard.js
 const express = require("express");
 const router = express.Router();
-const db = require("../models/db");
+const dashboardController = require('../controllers/dashboardController');
 
-router.get("/counts", async (req, res) => {
-  try {
-    const [artikelResult] = await db.query(
-      "SELECT COUNT(*) AS count FROM artikel"
-    );
-    const [halamanResult] = await db.query(
-      "SELECT COUNT(*) AS count FROM halaman"
-    );
-    const [kategoriResult] = await db.query(
-      "SELECT COUNT(*) AS count FROM kategori"
-    );
-    const [menuResult] = await db.query("SELECT COUNT(*) AS count FROM menu");
-    const [socialResult] = await db.query("SELECT COUNT(*) AS count FROM md_social");
-    const [komentarResult] = await db.query(
-      "SELECT COUNT(*) AS count FROM komentar"
-    );
-    const [userResult] = await db.query("SELECT COUNT(*) AS count FROM user");
-    const [galeriResult] = await db.query("SELECT COUNT(*) AS count FROM galeri")
-    const counts = {
-      artikel: artikelResult[0].count,
-      halaman: halamanResult[0].count,
-      kategori: kategoriResult[0].count,
-      menu: menuResult[0].count,
-      social: socialResult[0].count,
-      komentar: komentarResult[0].count,
-      users: userResult[0].count,
-      galeri: galeriResult[0].count
-    };
-
-    res.status(200).json(counts);
-  } catch (error) {
-    console.error("Error fetching dashboard counts:", error);
-    res
-      .status(500)
-      .json({
-        error: "Failed to fetch dashboard counts",
-        details: error.message,
-      });
-  }
-});
+router.get('/summary', dashboardController.getDashboardSummary);
+router.get('/analytics', dashboardController.getAnalyticsData);
 
 module.exports = router;

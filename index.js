@@ -58,7 +58,7 @@ app.use("/auth/login", loginLimiter);
 app.use("/auth/register", registerLimiter);
 app.use("/auth/forgot-password", forgotPasswordLimiter);
 
-app.use("/api/menu-definitions", menuRoute);
+app.use("/api/menus", menuRoute);
 app.use("/api/menu-items", menuItemRoute); 
 app.use("/api/auth", authRoute);
 app.use("/api/categories", categoryRoute);

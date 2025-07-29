@@ -63,17 +63,23 @@ const mediaFileFilter = (req, file, cb) => {
     }
 };
 
-exports.postImageUpload  = multer({
-  storage: createStorage("posts"),
+exports.postImageUpload = multer({
+  storage: createStorage("posts"), 
   fileFilter: imageFileFilter,
   limits: { fileSize: 2 * 1024 * 1024 },
-});
+}).fields([
+  { name: 'featured_image', maxCount: 1 },    
+  { name: 'gallery_images', maxCount: 10 }   
+]);
 
 exports.pageImageUpload = multer({
   storage: createStorage("pages"),
   fileFilter: imageFileFilter,
-  limits: { fileSize: 2 * 1024 * 1024 },
-});
+  limits: { fileSize: 5 * 1024 * 1024 },
+}).fields([
+  { name: 'featured_image', maxCount: 1 },
+  { name: 'gallery_images', maxCount: 10 }
+]);
 
 exports.userProfileImageUpload = multer({
   storage: createStorage("users"),

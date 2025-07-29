@@ -92,20 +92,13 @@ exports.updateSettings = async (req, res) => {
       smtp_port, 
       smtp_username,
       smtp_password,
-      twitter,
-      linkedin,
-      // ... tambahkan key lain sesuai kebutuhan
-      // Untuk gambar, kita akan menggunakan req.files
-      // Untuk menghapus gambar, klien bisa mengirim key dengan nilai null atau string kosong
-      clear_logo, // boolean flag dari body
-      clear_ikon, // boolean flag dari body
+      clear_logo, 
+      clear_ikon, 
     } = req.body;
 
-    // File yang diupload melalui Multer
     const ikonFile = req.files && req.files.ikon ? req.files.ikon[0] : null;
     const logoFile = req.files && req.files.logo ? req.files.logo[0] : null;
 
-    // Ambil pengaturan saat ini dari database untuk perbandingan dan penghapusan file lama
     const [currentSettingsRows] = await db.query("SELECT `key`, `value`, `type` FROM settings");
     const currentSettingsMap = new Map(currentSettingsRows.map(s => [s.key, { value: s.value, type: s.type }]));
 
@@ -117,7 +110,6 @@ exports.updateSettings = async (req, res) => {
       const oldValue = current ? parseSettingValue(current.value, current.type) : undefined;
       const valueToStore = serializeSettingValue(newValue, type);
 
-      // Hanya update jika nilai berubah
       if (newValue !== undefined && valueToStore !== current?.value) {
         await connection.query(
           "UPDATE settings SET `value` = ?, `type` = ? WHERE `key` = ?",
@@ -129,7 +121,6 @@ exports.updateSettings = async (req, res) => {
       }
     };
 
-    // --- Update pengaturan teks/nilai ---
     await updateSingleSetting("site_title", site_title, "string");
     await updateSingleSetting("site_description", site_description, "text");
     await updateSingleSetting("maintenance_mode", maintenance_mode, "boolean");
@@ -141,11 +132,7 @@ exports.updateSettings = async (req, res) => {
     await updateSingleSetting("smtp_port", smtp_port, "number");
     await updateSingleSetting("smtp_username", smtp_username, "string");
     await updateSingleSetting("smtp_password", smtp_password, "string");
-    await updateSingleSetting("twitter", twitter, "string");
-    await updateSingleSetting("linkedin", linkedin, "string");
-    // ... panggil updateSingleSetting untuk semua key lain yang Anda miliki
 
-    // --- Penanganan Gambar (ikon dan logo) ---
     const currentIkonValue = currentSettingsMap.get('ikon')?.value;
     const currentLogoValue = currentSettingsMap.get('logo')?.value;
 
@@ -153,23 +140,23 @@ exports.updateSettings = async (req, res) => {
     if (ikonFile) {
       const newIkonPath = `/uploads/settings/${ikonFile.filename}`;
       await updateSingleSetting("ikon", newIkonPath, "image");
-      deleteOldImage(currentIkonValue); // Hapus ikon lama
-    } else if (clear_ikon === true) { // Jika klien meminta untuk menghapus ikon
+      deleteOldImage(currentIkonValue); 
+    } else if (clear_ikon === true) { 
       await updateSingleSetting("ikon", null, "image");
-      deleteOldImage(currentIkonValue); // Hapus ikon lama
+      deleteOldImage(currentIkonValue); 
     }
 
     // Logo handling
     if (logoFile) {
       const newLogoPath = `/uploads/settings/${logoFile.filename}`;
       await updateSingleSetting("logo", newLogoPath, "image");
-      deleteOldImage(currentLogoValue); // Hapus logo lama
-    } else if (clear_logo === true) { // Jika klien meminta untuk menghapus logo
+      deleteOldImage(currentLogoValue); 
+    } else if (clear_logo === true) { 
       await updateSingleSetting("logo", null, "image");
-      deleteOldImage(currentLogoValue); // Hapus logo lama
+      deleteOldImage(currentLogoValue); 
     }
 
-    await connection.commit(); // Commit transaksi
+    await connection.commit(); 
 
     res.status(200).json({
       message: "Pengaturan berhasil diperbarui!",
@@ -179,9 +166,8 @@ exports.updateSettings = async (req, res) => {
     });
   } catch (error) {
     console.error("Error updating settings:", error);
-    if (connection) await connection.rollback(); // Rollback transaksi jika ada error
+    if (connection) await connection.rollback();
 
-    // Hapus file yang baru diupload jika terjadi kesalahan database
     if (req.files && req.files.ikon && req.files.ikon[0]) {
       deleteOldImage(`/uploads/settings/${req.files.ikon[0].filename}`);
     }
