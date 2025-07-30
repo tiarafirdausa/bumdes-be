@@ -7,6 +7,7 @@ const helmet = require("helmet");
 const path = require("path");
 
 const authRoute = require("./routes/authRoute");
+const userRoute = require("./routes/userRoute");
 const menuRoute = require("./routes/menuRoute"); 
 const menuItemRoute = require("./routes/menuItemRoute");
 const categoryRoute = require("./routes/categoryRoute");
@@ -50,14 +51,12 @@ app.disable("x-powered-by");
 app.use(generateCsrfToken);
 app.use("/uploads", express.static(path.join(__dirname, "public", "uploads")));
 
-app.get("/auth/csrf-token", (req, res) => {
+app.get("/csrf-token", (req, res) => {
   res.json({ csrfToken: req.csrfToken });
 });
 
-app.use("/auth/login", loginLimiter);
-app.use("/auth/register", registerLimiter);
-app.use("/auth/forgot-password", forgotPasswordLimiter);
-
+app.use("/api", authRoute);
+app.use("/api/users", userRoute);
 app.use("/api/menus", menuRoute);
 app.use("/api/menu-items", menuItemRoute); 
 app.use("/api/auth", authRoute);
