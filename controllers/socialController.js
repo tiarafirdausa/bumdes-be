@@ -51,35 +51,41 @@ exports.createSocial = async (req, res) => {
 
 exports.getAllSocial = async (req, res) => {
     try {
-        const { pageIndex = 1, pageSize = 10, query = '', sort = {} } = req.query;
-        const offset = (parseInt(pageIndex) - 1) * parseInt(pageSize);
-        let whereClause = '';
-        let queryParams = [];
+        const { query, pageIndex = 1, pageSize = 10, sort = {} } = req.query;
+
+        let sql = "SELECT id, platform, url, icon_class, is_active, created_at, updated_at FROM social_links";
+        let countSql = "SELECT COUNT(id) AS total FROM social_links";
+        
+        const params = [];
+        const countParams = [];
 
         if (query) {
-            whereClause += ' WHERE platform LIKE ?';
-            queryParams.push(`%${query}%`);
+            const searchQuery = `%${query}%`;
+            sql += " WHERE platform LIKE ?";
+            countSql += " WHERE platform LIKE ?";
+            params.push(searchQuery);
+            countParams.push(searchQuery);
         }
 
-        let orderByClause = ' ORDER BY platform ASC';
-        if (sort.order && sort.key) {
-            const sortOrder = sort.order === 'desc' ? 'DESC' : 'ASC';
+        if (sort.key && sort.order) {
+            const sortOrder = sort.order.toUpperCase() === 'DESC' ? 'DESC' : 'ASC';
             const allowedSortKeys = ['platform', 'created_at', 'updated_at'];
             if (allowedSortKeys.includes(sort.key)) {
-                orderByClause = ` ORDER BY ${sort.key} ${sortOrder}`;
+                sql += ` ORDER BY ${sort.key} ${sortOrder}`;
+            } else {
+                sql += " ORDER BY platform ASC"; 
             }
+        } else {
+            sql += " ORDER BY platform ASC"; 
         }
 
-        const [totalResult] = await db.query(
-            `SELECT COUNT(id) AS total FROM social_links${whereClause}`,
-            queryParams
-        );
-        const total = totalResult[0].total;
+        const offset = (parseInt(pageIndex) - 1) * parseInt(pageSize);
+        sql += " LIMIT ? OFFSET ?";
+        params.push(parseInt(pageSize), offset);
 
-        const [socialEntries] = await db.query(
-            `SELECT id, platform, url, icon_class, is_active, created_at, updated_at FROM social_links${whereClause}${orderByClause} LIMIT ?, ?`,
-            [...queryParams, offset, parseInt(pageSize)]
-        );
+        const [socialEntries] = await db.query(sql, params);
+        const [totalResult] = await db.query(countSql, countParams);
+        const total = totalResult[0].total;
 
         res.status(200).json({
             data: socialEntries,

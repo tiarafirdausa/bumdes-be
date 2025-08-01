@@ -752,8 +752,8 @@ exports.getPosts = async (req, res) => {
       countQuery,
       queryParams.slice(0, queryParams.length - 2)
     );
+
     const totalItems = totalResults[0].total;
-    const totalPages = Math.ceil(totalItems / parsedPageSize);
 
     const processedPosts = posts.map((post) => {
       const categories = post.categories_info
@@ -797,7 +797,12 @@ exports.getPosts = async (req, res) => {
       return { ...post, categories, tags, gallery_images };
     });
 
-    res.status(200).json(processedPosts);
+    res.status(200).json({
+      data: processedPosts,
+      total: totalItems,
+      pageIndex: parseInt(pageIndex),
+      pageSize: parsedPageSize,
+    });
   } catch (error) {
     console.error("Error fetching posts:", error);
     res.status(500).json({

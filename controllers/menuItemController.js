@@ -147,9 +147,6 @@ exports.getAllMenuItems = async (req, res) => {
             const sortOrder = sort.order === 'desc' ? 'DESC' : 'ASC';
             const allowedSortKeys = ['title', 'type', 'order', 'created_at', 'updated_at'];
             if (allowedSortKeys.includes(sort.key)) {
-                // Jika ingin sort berdasarkan key lain, tambahkan di awal atau di akhir default sort
-                // Contoh: `ORDER BY ${sort.key} ${sortOrder}, parent_id ASC, \`order\` ASC`
-                // Atau: `ORDER BY parent_id ASC, \`order\` ASC, ${sort.key} ${sortOrder}`
                 orderByClause = ` ORDER BY ${sort.key} ${sortOrder}, parent_id ASC, \`order\` ASC`;
             }
         }

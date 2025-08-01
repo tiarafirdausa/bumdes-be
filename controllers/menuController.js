@@ -54,39 +54,43 @@ exports.getAllMenus = async (req, res) => {
         const {
             pageIndex = 1,
             pageSize = 10,
-            query = '', 
+            query, 
             sort = {},
         } = req.query;
 
-        const offset = (parseInt(pageIndex) - 1) * parseInt(pageSize);
-
-        let whereClause = '';
-        let queryParams = [];
+        let sql = "SELECT id, name, slug, created_at, updated_at FROM menus";
+        let countSql = "SELECT COUNT(id) AS total FROM menus";
+        
+        const params = [];
+        const countParams = [];
 
         if (query) {
-            whereClause += ' WHERE name LIKE ? OR slug LIKE ?';
-            queryParams.push(`%${query}%`, `%${query}%`);
+            const searchQuery = `%${query}%`;
+            sql += " WHERE name LIKE ? OR slug LIKE ?";
+            countSql += " WHERE name LIKE ? OR slug LIKE ?";
+            params.push(searchQuery, searchQuery);
+            countParams.push(searchQuery, searchQuery);
         }
 
-        let orderByClause = ' ORDER BY name ASC'; 
         if (sort.order && sort.key) {
-            const sortOrder = sort.order === 'desc' ? 'DESC' : 'ASC';
+            const sortOrder = sort.order.toUpperCase() === 'DESC' ? 'DESC' : 'ASC';
             const allowedSortKeys = ['name', 'slug', 'created_at', 'updated_at'];
             if (allowedSortKeys.includes(sort.key)) {
-                orderByClause = ` ORDER BY ${sort.key} ${sortOrder}`;
+                sql += ` ORDER BY ${sort.key} ${sortOrder}`;
+            } else {
+                sql += " ORDER BY name ASC"; // Default sort
             }
+        } else {
+            sql += " ORDER BY name ASC"; // Default sort
         }
+        
+        const offset = (parseInt(pageIndex) - 1) * parseInt(pageSize);
+        sql += " LIMIT ? OFFSET ?";
+        params.push(parseInt(pageSize), offset);
 
-        const [totalResult] = await db.query(
-            `SELECT COUNT(id) AS total FROM menus${whereClause}`,
-            queryParams
-        );
+        const [menus] = await db.query(sql, params);
+        const [totalResult] = await db.query(countSql, countParams);
         const total = totalResult[0].total;
-
-        const [menus] = await db.query(
-            `SELECT id, name, slug, created_at, updated_at FROM menus${whereClause}${orderByClause} LIMIT ?, ?`,
-            [...queryParams, offset, parseInt(pageSize)]
-        );
 
         res.status(200).json({
             data: menus,
