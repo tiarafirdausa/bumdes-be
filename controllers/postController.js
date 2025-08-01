@@ -42,10 +42,23 @@ exports.createPost = async (req, res) => {
       meta_description,
       status,
       published_at,
-      categories,
-      tags,
     } = req.body;
 
+    let categories = req.body.categories;
+    let tags = req.body.tags;
+    
+    if (categories === undefined) {
+      categories = [];
+    } else if (!Array.isArray(categories)) {
+      categories = [categories]; 
+    }
+
+    if (tags === undefined) {
+      tags = [];
+    } else if (!Array.isArray(tags)) {
+      tags = [tags]; 
+    }
+    
     const uploadedFiles = req.files;
 
     if (!title || !content || !author_id) {
@@ -72,6 +85,7 @@ exports.createPost = async (req, res) => {
       "SELECT id FROM posts WHERE slug = ?",
       [slug]
     );
+
     if (existingSlug.length > 0) {
       let suffix = 1;
       let uniqueSlug = slug;
@@ -121,21 +135,21 @@ exports.createPost = async (req, res) => {
     }
 
     // Insert post categories
-    if (categories && Array.isArray(categories) && categories.length > 0) {
-      const categoryValues = categories.map(catId => [postId, catId]);
-      await connection.query(
-        "INSERT IGNORE INTO post_categories (post_id, category_id) VALUES ?",
-        [categoryValues]
-      );
-    }
+    if (categories.length > 0) { 
+      const categoryValues = categories.map(catId => [postId, parseInt(catId)]); // Pastikan catId adalah integer
+      await connection.query(
+        "INSERT IGNORE INTO post_categories (post_id, category_id) VALUES ?",
+        [categoryValues]
+      );
+    }
 
-    if (tags && Array.isArray(tags) && tags.length > 0) {
-      const tagValues = tags.map(tagId => [postId, tagId]);
-      await connection.query(
-        "INSERT IGNORE INTO post_tags (post_id, tag_id) VALUES ?",
-        [tagValues]
-      );
-    }
+    if (tags.length > 0) { 
+      const tagValues = tags.map(tagId => [postId, parseInt(tagId)]); // Pastikan tagId adalah integer
+      await connection.query(
+        "INSERT IGNORE INTO post_tags (post_id, tag_id) VALUES ?",
+        [tagValues]
+      );
+    }
 
     await connection.commit(); 
 
@@ -146,7 +160,8 @@ exports.createPost = async (req, res) => {
       meta_title: finalMetaTitle,
       meta_description: finalMetaDescription,
       author_id, status: finalStatus, published_at: finalPublishedAt,
-      categories, tags,
+      categories: categories.map(id => parseInt(id)), 
+      tags: tags.map(id => parseInt(id)), 
       message: "Postingan berhasil dibuat.",
     });
   } catch (error) {
@@ -181,10 +196,24 @@ exports.updatePost = async (req, res) => {
     const { id } = req.params;
     const {
       title, newSlug, excerpt, content, author_id, meta_title, meta_description, status, published_at,
-      categories, tags, clear_featured_image,
+      clear_featured_image,
       clear_gallery_images,
       delete_gallery_image_ids
     } = req.body;
+
+    let categories = req.body.categories;
+    let tags = req.body.tags;
+
+    if (categories === undefined) {
+        categories = [];
+    } else if (!Array.isArray(categories)) {
+        categories = [categories];
+    }
+    if (tags === undefined) {
+        tags = [];
+    } else if (!Array.isArray(tags)) {
+        tags = [tags];
+    }
 
     const uploadedFiles = req.files;
 
@@ -379,20 +408,21 @@ exports.updatePost = async (req, res) => {
       }
     }
 
-    if (categories !== undefined) {
-      await connection.query("DELETE FROM post_categories WHERE post_id = ?", [id]);
-      if (Array.isArray(categories) && categories.length > 0) {
-        const categoryValues = categories.map(catId => [id, catId]);
-        await connection.query("INSERT IGNORE INTO post_categories (post_id, category_id) VALUES ?", [categoryValues]);
-      }
+    if (categories !== undefined) { 
+        await connection.query("DELETE FROM post_categories WHERE post_id = ?", [id]);
+        if (categories.length > 0) { 
+            const categoryValues = categories.map(catId => [id, parseInt(catId)]);
+            await connection.query("INSERT IGNORE INTO post_categories (post_id, category_id) VALUES ?", [categoryValues]);
+        }
     }
 
-    if (tags !== undefined) {
-      await connection.query("DELETE FROM post_tags WHERE post_id = ?", [id]);
-      if (Array.isArray(tags) && tags.length > 0) {
-        const tagValues = tags.map(tagId => [id, tagId]);
-        await connection.query("INSERT IGNORE INTO post_tags (post_id, tag_id) VALUES ?", [tagValues]);
-      }
+    // Update post tags
+    if (tags !== undefined) { 
+        await connection.query("DELETE FROM post_tags WHERE post_id = ?", [id]);
+        if (tags.length > 0) { 
+            const tagValues = tags.map(tagId => [id, parseInt(tagId)]);
+            await connection.query("INSERT IGNORE INTO post_tags (post_id, tag_id) VALUES ?", [tagValues]);
+        }
     }
 
     await connection.commit(); 
@@ -401,6 +431,8 @@ exports.updatePost = async (req, res) => {
       message: "Postingan berhasil diperbarui",
       new_featured_image_path: newFeaturedImagePath,
       new_gallery_image_paths: newGalleryImagePaths,
+      categories: categories.map(id => parseInt(id)),
+      tags: tags.map(id => parseInt(id)), 
       ...responseBody,
     });
   } catch (error) {

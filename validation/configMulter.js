@@ -92,7 +92,6 @@ exports.settingImageUpload = multer({
   fileFilter: imageFileFilter,
   limits: { fileSize: 2 * 1024 * 1024 },
 }).fields([
-  { name: "ikon", maxCount: 1 },
   { name: "logo", maxCount: 1 },
 ]);
 

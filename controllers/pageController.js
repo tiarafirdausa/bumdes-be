@@ -167,10 +167,6 @@ exports.createPage = async (req, res) => {
 };
 
 exports.updatePage = async (req, res) => {
-  console.log("--- Backend: updatePage started ---");
-  console.log("req.body:", req.body);
-  console.log("req.files:", req.files);
-
   let connection;
   try {
     const { id } = req.params;
@@ -590,8 +586,6 @@ exports.getPageBySlug = async (req, res) => {
 };
 
 exports.deletePage = async (req, res) => {
-  console.log("--- Backend: deletePage started ---");
-
   let connection;
   try {
     const { id } = req.params;

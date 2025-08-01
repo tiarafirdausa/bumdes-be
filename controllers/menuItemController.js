@@ -321,7 +321,6 @@ exports.deleteMenuItem = async (req, res) => {
     if (childItems.length > 0) {
         // Jika ada, set parent_id mereka menjadi NULL
         await db.query("UPDATE menu_items SET parent_id = NULL WHERE parent_id = ?", [id]);
-        console.log(`Updated parent_id to NULL for ${childItems.length} child items of menu item ${id}.`);
     }
 
     const [result] = await db.query("DELETE FROM menu_items WHERE id = ?", [id]);

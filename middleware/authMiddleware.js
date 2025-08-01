@@ -15,6 +15,7 @@ exports.protect = (req, res, next) => {
   }
 
   if (!token) {
+    console.error("Token tidak ditemukan.");
     return res
       .status(401)
       .json({ error: "Akses ditolak. Tidak ada token otorisasi." });

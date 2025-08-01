@@ -3,7 +3,6 @@ const express = require("express");
 const cors = require("cors");
 const db = require("./models/db");
 const cookieParser = require("cookie-parser");
-const helmet = require("helmet");
 const path = require("path");
 
 const authRoute = require("./routes/authRoute");
@@ -22,8 +21,6 @@ const mediaRoute = require("./routes/mediaRoute");
 const tagRoute = require("./routes/tagRoute");
 
 const generateCsrfToken = require("./middleware/csrfMiddleware");
-const { loginLimiter, registerLimiter, forgotPasswordLimiter } = require("./validation/rateLimiters");
-
 
 const app = express();
 const port = process.env.PORT;

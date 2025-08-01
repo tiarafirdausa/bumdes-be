@@ -3,8 +3,6 @@ const db = require("../models/db");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const { validationResult } = require("express-validator");
-const fs = require("fs");
-const path = require("path");
 const crypto = require("crypto");
 const sendEmail = require("../middleware/sendEmail");
 require("dotenv").config();
@@ -41,7 +39,7 @@ const generateTokenAndSetCookie = (user, statusCode, res) => {
   res.status(statusCode).json({
     user: {
       id: user.id,
-      nama_lengkap: user.nama_lengkap,
+      name: user.name,
       email: user.email,
       username: user.username,
       role: user.role,
@@ -83,7 +81,7 @@ exports.loginUser = async (req, res) => {
         .json({ error: "Kredensial tidak valid (password salah)." });
     }
 
-    generateTokenAndSetCookie(user,200, res);
+    generateTokenAndSetCookie(user, 200, res);
   } catch (error) {
     console.error("Error logging in user:", error);
     res
@@ -132,422 +130,7 @@ exports.logoutUser = (req, res) => {
   }
 };
 
-// --- Register Pengguna Baru ---
-exports.registerUser = async (req, res) => {
-  const errors = validationResult(req);
-  if (!errors.isEmpty()) {
-    if (req.file) {
-      fs.unlink(req.file.path, (unlinkErr) => {
-        if (unlinkErr)
-          console.error(
-            "Error deleting uploaded file due to validation errors:",
-            unlinkErr
-          );
-      });
-    }
-    return res.status(400).json({ errors: errors.array() });
-  }
-  try {
-    const { name, email, username, password, role, status } = req.body;
-    const fotoPath = req.file
-      ? `/uploads/users/${req.file.filename}`
-      : null;
-    if (!name || !email || !username || !password || !role) {
-      if (req.file) {
-        fs.unlink(req.file.path, (unlinkErr) => {
-          if (unlinkErr)
-            console.error(
-              "Error deleting uploaded file due to missing fields:",
-              unlinkErr
-            );
-        });
-      }
-      return res
-        .status(400)
-        .json({
-          error:
-            "Semua field wajib diisi: nama_lengkap, email, username, password, level.",
-        });
-    }
-
-    const [existingUsers] = await db.query(
-      "SELECT username, email FROM users WHERE username = ? OR email = ?",
-      [username, email]
-    );
-
-    if (existingUsers.length > 0) {
-      if (req.file) {
-        fs.unlink(req.file.path, (unlinkErr) => {
-          if (unlinkErr)
-            console.error(
-              "Error deleting uploaded file due to duplicate entry:",
-              unlinkErr
-            );
-        });
-      }
-      const isUsernameTaken = existingUsers.some(
-        (u) => u.username === username
-      );
-      const isEmailTaken = existingUsers.some((u) => u.email === email);
-
-      if (isUsernameTaken && isEmailTaken)
-        return res
-          .status(409)
-          .json({ error: "Username dan email sudah terdaftar." });
-      if (isUsernameTaken)
-        return res.status(409).json({ error: "Username sudah terdaftar." });
-      if (isEmailTaken)
-        return res.status(409).json({ error: "Email sudah terdaftar." });
-    }
-
-    const hashedPassword = await bcrypt.hash(password, 10);
-    const userStatus = ['active', 'suspended'].includes(status) ? status : 'active';
-
-    const [result] = await db.query(
-      "INSERT INTO users (name, email, username, password, role, foto, status) VALUES (?, ?, ?, ?, ?, ?, ?)",
-      [name, email, username, hashedPassword, role, fotoPath, userStatus] // Use fotoPath
-    );
-
-    const newUser = {
-      id: result.insertId,
-      name,
-      email,
-      username,
-      role,
-      foto: fotoPath,
-      status: userStatus,
-    };
-
-    res
-      .status(201)
-      .json({ message: "Registrasi pengguna berhasil.", user: newUser });
-  } catch (error) {
-    console.error("Error registering user:", error);
-    if (req.file) {
-      fs.unlink(req.file.path, (unlinkErr) => {
-        if (unlinkErr)
-          console.error(
-            "Error deleting uploaded file on DB failure:",
-            unlinkErr
-          );
-      });
-    }
-    res
-      .status(500)
-      .json({ error: "Gagal melakukan registrasi.", details: error.message });
-  }
-};
-
-// --- Update Pengguna ---
-exports.updateUser = async (req, res) => {
-  const { id } = req.params;
-  const {
-    name,
-    email,
-    username,
-    password,
-    role,
-    foto: fotoFromBody,
-    status,
-  } = req.body;
-  const newFotoPath = req.file
-    ? `/uploads/users/${req.file.filename}`
-    : undefined;
-
-  let updateFields = [];
-  let updateValues = [];
-  let responseBody = {};
-
-  try {
-    const [oldUserRows] = await db.query(
-      "SELECT username, email, role, name, foto, status FROM users WHERE id = ?",
-      [id]
-    );
-
-    if (oldUserRows.length === 0) {
-      if (req.file) {
-        fs.unlink(req.file.path, (unlinkErr) => {
-          if (unlinkErr)
-            console.error(
-              "Error deleting uploaded file because user not found:",
-              unlinkErr
-            );
-        });
-      }
-      return res.status(404).json({ error: "Pengguna tidak ditemukan." });
-    }
-
-    const oldUser = oldUserRows[0];
-    const oldFotoPath = oldUser.foto;
-
-    if (name !== undefined && name !== oldUser.name) {
-      updateFields.push("name = ?");
-      updateValues.push(name);
-    }
-
-    if (email !== undefined) {
-      if (email !== oldUser.email) {
-        const [existingEmail] = await db.query(
-          "SELECT id FROM users WHERE email = ? AND id != ?",
-          [email, id]
-        );
-        if (existingEmail.length > 0) {
-          if (req.file) {
-            fs.unlink(req.file.path, (unlinkErr) => {
-              if (unlinkErr)
-                console.error(
-                  "Error deleting uploaded file due to duplicate email:",
-                  unlinkErr
-                );
-            });
-          }
-          return res.status(409).json({ error: "Email sudah terdaftar." });
-        }
-      }
-      if (email !== oldUser.email) {
-        updateFields.push("email = ?");
-        updateValues.push(email);
-      }
-    }
-
-    if (username !== undefined) {
-      if (username !== oldUser.username) {
-        const [existingUsername] = await db.query(
-          "SELECT id FROM users WHERE username = ? AND id != ?",
-          [username, id]
-        );
-        if (existingUsername.length > 0) {
-          if (req.file) {
-            fs.unlink(req.file.path, (unlinkErr) => {
-              if (unlinkErr)
-                console.error(
-                  "Error deleting uploaded file due to duplicate username:",
-                  unlinkErr
-                );
-            });
-          }
-          return res.status(409).json({ error: "Username sudah terdaftar." });
-        }
-      }
-      if (username !== oldUser.username) {
-        updateFields.push("username = ?");
-        updateValues.push(username);
-      }
-    }
-
-    if (password !== undefined && password.length > 0) {
-      const hashedPassword = await bcrypt.hash(password, 10);
-      updateFields.push("password = ?");
-      updateValues.push(hashedPassword);
-    }
-
-    if (role !== undefined && role !== oldUser.role) {
-      updateFields.push("role = ?");
-      updateValues.push(role);
-    }
-
-    if (status !== undefined && status !== oldUser.status) {
-        if (!['active', 'suspended'].includes(status)) {
-            return res.status(400).json({ error: "Status tidak valid. Harus 'active' atau 'suspended'." });
-        }
-        updateFields.push("status = ?");
-        updateValues.push(status);
-    }
-
-    if (req.file) {
-      updateFields.push("foto = ?");
-      updateValues.push(newFotoPath);
-      if (oldFotoPath && oldFotoPath.startsWith("/uploads/users")) {
-        const fullOldPath = path.join(__dirname, "..", "public", oldFotoPath);
-        if (fs.existsSync(fullOldPath)) {
-          fs.unlink(fullOldPath, (unlinkErr) => {
-            if (unlinkErr)
-              console.error(
-                "Failed to delete old user photo:",
-                fullOldPath,
-                unlinkErr
-              );
-            else console.log("Old user photo deleted:", fullOldPath);
-          });
-        }
-      }
-    } else if (
-      fotoFromBody !== undefined &&
-      (fotoFromBody === null || fotoFromBody === "")
-    ) {
-      updateFields.push("foto = ?");
-      updateValues.push(null);
-      responseBody.photo_cleared = true;
-      if (oldFotoPath && oldFotoPath.startsWith("/uploads/users")) {
-        const fullOldPath = path.join(__dirname, "..", "public", oldFotoPath);
-        if (fs.existsSync(fullOldPath)) {
-          fs.unlink(fullOldPath, (unlinkErr) => {
-            if (unlinkErr)
-              console.error(
-                "Failed to delete old user photo:",
-                fullOldPath,
-                unlinkErr
-              );
-            else console.log("Old user photo deleted:", fullOldPath);
-          });
-        }
-      }
-    }
-
-    if (
-      updateFields.length === 0 &&
-      !req.file &&
-      !(
-        fotoFromBody !== undefined &&
-        (fotoFromBody === null || fotoFromBody === "")
-      )
-    ) {
-      return res
-        .status(400)
-        .json({
-          error:
-            "Tidak ada data yang disediakan untuk diperbarui atau tidak ada perubahan yang terdeteksi.",
-        });
-    }
-
-    const query = `UPDATE users SET ${updateFields.join(
-      ", "
-    )} WHERE id = ?`;
-    updateValues.push(id);
-
-    const [result] = await db.query(query, updateValues);
-
-    if (result.affectedRows === 0) {
-      if (req.file) {
-        fs.unlink(req.file.path, (unlinkErr) => {
-          if (unlinkErr)
-            console.error(
-              "Error deleting uploaded file after no DB change:",
-              unlinkErr
-            );
-        });
-      }
-      return res
-        .status(404)
-        .json({
-          error:
-            "Pengguna tidak ditemukan atau tidak ada perubahan yang dilakukan.",
-        });
-    }
-
-    res
-      .status(200)
-      .json({
-        message: "Informasi pengguna berhasil diperbarui",
-        new_photo_path: newFotoPath,
-        ...responseBody,
-      });
-  } catch (error) {
-    console.error("Error updating user:", error);
-    if (req.file) {
-      fs.unlink(req.file.path, (unlinkErr) => {
-        if (unlinkErr)
-          console.error(
-            "Error deleting uploaded file on DB failure:",
-            unlinkErr
-          );
-      });
-    }
-    if (error.code === "ER_DUP_ENTRY") {
-      res
-        .status(409)
-        .json({
-          error:
-            "Terjadi duplikasi entri. Username atau email mungkin sudah terdaftar.",
-          details: error.message,
-        });
-    } else {
-      res
-        .status(500)
-        .json({ error: "Gagal memperbarui pengguna.", details: error.message });
-    }
-  }
-};
-
-exports.getUsers = async (req, res) => {
-  try {
-    const [users] = await db.query(
-      "SELECT id, name, email, username, role, foto, status FROM users"
-    );
-    res.status(200).json(users);
-  } catch (error) {
-    console.error("Error fetching users:", error);
-    res
-      .status(500)
-      .json({
-        error: "Gagal mengambil daftar pengguna.",
-        details: error.message,
-      });
-  }
-};
-
-exports.deleteUser = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const [user] = await db.query("SELECT foto FROM users WHERE id = ?", [
-      id,
-    ]);
-    const fotoPathToDelete = user.length > 0 ? user[0].foto : null;
-    const [result] = await db.query("DELETE FROM users WHERE id = ?", [id]);
-
-    if (result.affectedRows === 0) {
-      return res.status(404).json({ error: "Pengguna tidak ditemukan." });
-    }
-
-    if (
-      fotoPathToDelete &&
-      fotoPathToDelete.startsWith("/uploads/users")
-    ) {
-      const fullPath = path.join(__dirname, "..", "public", fotoPathToDelete);
-      if (fs.existsSync(fullPath)) {
-        fs.unlink(fullPath, (err) => {
-          if (err)
-            console.error("Gagal menghapus file foto pengguna:", fullPath, err);
-          else console.log("File foto pengguna dihapus:", fullPath);
-        });
-      }
-    }
-    res.status(200).json({ message: "Pengguna berhasil dihapus." });
-  } catch (error) {
-    console.error("Error deleting user:", error);
-    res
-      .status(500)
-      .json({ error: "Gagal menghapus pengguna.", details: error.message });
-  }
-};
-
-exports.getUserById = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const [users] = await db.query(
-      "SELECT id, username, name, email, role, foto, status FROM users WHERE id = ?",
-      [id]
-    );
-
-    if (users.length === 0) {
-      return res.status(404).json({ error: "Pengguna tidak ditemukan." });
-    }
-
-    const user = users[0];
-    // delete user.password;
-
-    res.status(200).json({ user: user });
-  } catch (error) {
-    console.error("Error fetching user by ID:", error);
-    res
-      .status(500)
-      .json({
-        error: "Gagal mengambil informasi pengguna.",
-        details: error.message,
-      });
-  }
-};
-
+// --- Forgot Password ---
 exports.forgotPassword = async (req, res) => {
     const { email } = req.body;
     if (!email) {
@@ -568,7 +151,7 @@ exports.forgotPassword = async (req, res) => {
         const resetToken = crypto.randomBytes(32).toString('hex');
         const passwordResetToken = crypto.createHash('sha256').update(resetToken).digest('hex');
 
-        const resetPasswordExpires = new Date(Date.now() + 60 * 60 * 1000); 
+        const resetPasswordExpires = new Date(Date.now() + 60 * 60 * 1000); // 1 jam dari sekarang
 
         await db.query(
             "UPDATE users SET resetPasswordToken = ?, resetPasswordExpires = ? WHERE id = ?",
@@ -625,7 +208,7 @@ exports.resetPassword = async (req, res) => {
 
         const [users] = await db.query(
             "SELECT id FROM users WHERE resetPasswordToken = ? AND resetPasswordExpires > NOW()",
-            [hashedReceivedToken] 
+            [hashedReceivedToken]
         );
 
         const user = users[0];
@@ -647,4 +230,3 @@ exports.resetPassword = async (req, res) => {
         res.status(500).json({ error: 'Gagal mereset password.', details: error.message });
     }
 };
-
