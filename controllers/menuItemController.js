@@ -75,7 +75,9 @@ exports.createMenuItem = async (req, res) => {
       const refData = await getReferenceSlugOrTitle(type, reference_id);
       if (refData) {
         finalUrl = `/${type}s/${refData.slug}`; 
-        finalTitle = refData.title;
+        if (!finalTitle) {
+          finalTitle = refData.title;
+        }
       } else {
         return res.status(400).json({ error: `Referensi ${type} dengan ID ${reference_id} tidak ditemukan.` });
       }
