@@ -250,9 +250,6 @@ exports.createPost = async (req, res) => {
 };
 
 exports.updatePost = async (req, res) => {
-  console.log("Request Body:", req.body);
-console.log("Request Files:", req.file || req.files);
-console.log("clear_featured_image:", req.body.clear_featured_image);
     let connection;
     try {
         const { id } = req.params;
@@ -646,7 +643,7 @@ exports.getPosts = async (req, res) => {
       tagId,
       status,
       authorId,
-      search,
+      query: search,
       pageIndex = 1,
       pageSize = 10,
       sort = {},

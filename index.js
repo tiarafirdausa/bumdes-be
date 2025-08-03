@@ -6,6 +6,7 @@ const cookieParser = require("cookie-parser");
 const path = require("path");
 
 const authRoute = require("./routes/authRoute");
+const mediaCategoryRoute = require("./routes/mediaCategoryRoute")
 const userRoute = require("./routes/userRoute");
 const menuRoute = require("./routes/menuRoute"); 
 const menuItemRoute = require("./routes/menuItemRoute");
@@ -66,6 +67,7 @@ app.use("/api/settings", settingRoute);
 app.use("/api/socials", socialRoute);
 app.use("/api/upload", uploadRoute);
 app.use("/api/media", mediaRoute);
+app.use("/api/media-categories", mediaCategoryRoute);
 app.use("/api/tags", tagRoute);
 
 app.use((err, req, res, next) => {

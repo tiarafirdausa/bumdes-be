@@ -571,7 +571,7 @@ exports.getPages = async (req, res) => {
     const {
       pageIndex = 1,
       pageSize = 10,
-      search = "",
+      query: search = "",
       status = "",
       author_id = "",
       sort = {},

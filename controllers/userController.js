@@ -341,14 +341,13 @@ exports.updateUser = async (req, res) => {
 
 exports.getUsers = async (req, res) => {
     try {
-        // Ekstrak parameter dari query string
         const {
-            query, // Untuk pencarian berdasarkan nama, email, atau username
+            query, 
             pageIndex = 1,
             pageSize = 10,
-            sort = {}, // { key: 'name', order: 'asc' }
-            role, // Filter berdasarkan role
-            status // Filter berdasarkan status
+            sort = {},
+            role, 
+            status 
         } = req.query;
 
         let sql = "SELECT id, name, email, username, role, foto, status FROM users";
@@ -358,7 +357,6 @@ exports.getUsers = async (req, res) => {
         const params = [];
         const countParams = [];
 
-        // Menambahkan kondisi WHERE untuk pencarian (query)
         if (query) {
             const searchQuery = `%${query}%`;
             whereClauses.push("(name LIKE ? OR email LIKE ? OR username LIKE ?)");
@@ -366,55 +364,45 @@ exports.getUsers = async (req, res) => {
             countParams.push(searchQuery, searchQuery, searchQuery);
         }
 
-        // Menambahkan kondisi WHERE untuk filter role
         if (role) {
             whereClauses.push("role = ?");
             params.push(role);
             countParams.push(role);
         }
 
-        // Menambahkan kondisi WHERE untuk filter status
         if (status) {
             whereClauses.push("status = ?");
             params.push(status);
             countParams.push(status);
         }
 
-        // Gabungkan semua klausa WHERE
         if (whereClauses.length > 0) {
             const combinedWhere = whereClauses.join(" AND ");
             sql += ` WHERE ${combinedWhere}`;
             countSql += ` WHERE ${combinedWhere}`;
         }
 
-        // Menambahkan pengurutan (sorting)
         if (sort.key && sort.order) {
             const validSortKeys = ['id', 'name', 'email', 'username', 'role', 'status', 'created_at', 'updated_at']; // Tambahkan created_at/updated_at jika ada di tabel users
             if (validSortKeys.includes(sort.key)) {
                 const order = sort.order.toUpperCase() === 'DESC' ? 'DESC' : 'ASC';
                 sql += ` ORDER BY ${sort.key} ${order}`;
             } else {
-                // Default sort jika key tidak valid
                 sql += " ORDER BY name ASC";
             }
         } else {
-            // Default sort jika tidak ada sort yang ditentukan
             sql += " ORDER BY name ASC";
         }
 
-        // Menambahkan paginasi (pagination)
         const offset = (parseInt(pageIndex) - 1) * parseInt(pageSize);
         sql += " LIMIT ? OFFSET ?";
         params.push(parseInt(pageSize), offset);
 
-        // Eksekusi query untuk mendapatkan data user
         const [users] = await db.query(sql, params);
 
-        // Eksekusi query untuk mendapatkan total count
         const [totalResult] = await db.query(countSql, countParams);
         const total = totalResult[0].total;
 
-        // Kirim respons dalam format yang diharapkan frontend
         res.status(200).json({ users, totalCount: total });
     } catch (error) {
         console.error("Error fetching users:", error);
