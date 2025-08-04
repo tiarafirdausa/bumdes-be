@@ -646,8 +646,10 @@ exports.getPosts = async (req, res) => {
       query: search,
       pageIndex = 1,
       pageSize = 10,
-      sort = {},
     } = req.query;
+
+    const sortKey = req.query['sort[key]'];
+    const sortOrder = req.query['sort[order]'];
 
     const offset = (parseInt(pageIndex) - 1) * parseInt(pageSize);
     const parsedPageSize = parseInt(pageSize);
@@ -719,20 +721,21 @@ exports.getPosts = async (req, res) => {
       "author_id",
     ];
     let orderBySql = "p.published_at DESC, p.created_at DESC";
-    if (sort.key && sort.order) {
-      let finalSortBy = allowedSortKeys.includes(sort.key)
-        ? `p.${sort.key}`
-        : "p.created_at";
-      if (sort.key === "author_name") {
-        finalSortBy = "u.name";
-      }
-      const finalOrder =
-        sort.order.toUpperCase() === "ASC" ||
-        sort.order.toUpperCase() === "DESC"
-          ? sort.order.toUpperCase()
-          : "DESC";
-      orderBySql = `${finalSortBy} ${finalOrder}`;
-    }
+    
+    if (sortKey && sortOrder) {
+      let finalSortBy = allowedSortKeys.includes(sortKey)
+        ? `p.${sortKey}`
+        : "p.created_at";
+      if (sortKey === "author_name") {
+        finalSortBy = "u.name";
+      }
+      const finalOrder =
+        sortOrder.toUpperCase() === "ASC" ||
+        sortOrder.toUpperCase() === "DESC"
+          ? sortOrder.toUpperCase()
+          : "DESC";
+      orderBySql = `${finalSortBy} ${finalOrder}`;
+    }
 
     query += ` GROUP BY p.id ORDER BY ${orderBySql}`;
 

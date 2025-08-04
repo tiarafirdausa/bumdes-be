@@ -58,6 +58,10 @@ exports.getAllMenus = async (req, res) => {
             sort = {},
         } = req.query;
 
+        const sortKey = req.query['sort[key]'];
+        const sortOrder = req.query['sort[order]'];
+
+
         let sql = "SELECT id, name, slug, created_at, updated_at FROM menus";
         let countSql = "SELECT COUNT(id) AS total FROM menus";
         
@@ -72,17 +76,17 @@ exports.getAllMenus = async (req, res) => {
             countParams.push(searchQuery, searchQuery);
         }
 
-        if (sort.order && sort.key) {
-            const sortOrder = sort.order.toUpperCase() === 'DESC' ? 'DESC' : 'ASC';
-            const allowedSortKeys = ['name', 'slug', 'created_at', 'updated_at'];
-            if (allowedSortKeys.includes(sort.key)) {
-                sql += ` ORDER BY ${sort.key} ${sortOrder}`;
-            } else {
-                sql += " ORDER BY name ASC"; // Default sort
-            }
-        } else {
-            sql += " ORDER BY name ASC"; // Default sort
-        }
+        if (sortKey && sortOrder) {
+            const order = sortOrder.toUpperCase() === 'DESC' ? 'DESC' : 'ASC';
+            const allowedSortKeys = ['name', 'slug', 'created_at', 'updated_at'];
+            if (allowedSortKeys.includes(sortKey)) {
+                sql += ` ORDER BY ${sortKey} ${order}`;
+            } else {
+                sql += " ORDER BY name ASC";
+            }
+        } else {
+            sql += " ORDER BY name ASC";
+        }
         
         const offset = (parseInt(pageIndex) - 1) * parseInt(pageSize);
         sql += " LIMIT ? OFFSET ?";

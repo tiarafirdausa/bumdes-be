@@ -51,7 +51,9 @@ exports.createSocial = async (req, res) => {
 
 exports.getAllSocial = async (req, res) => {
     try {
-        const { query, pageIndex = 1, pageSize = 10, sort = {} } = req.query;
+        const { query, pageIndex = 1, pageSize = 10} = req.query;
+        const sortKey = req.query['sort[key]'];
+        const sortOrder = req.query['sort[order]'];
 
         let sql = "SELECT id, platform, url, icon_class, is_active, created_at, updated_at FROM social_links";
         let countSql = "SELECT COUNT(id) AS total FROM social_links";
@@ -67,17 +69,17 @@ exports.getAllSocial = async (req, res) => {
             countParams.push(searchQuery);
         }
 
-        if (sort.key && sort.order) {
-            const sortOrder = sort.order.toUpperCase() === 'DESC' ? 'DESC' : 'ASC';
-            const allowedSortKeys = ['platform', 'created_at', 'updated_at'];
-            if (allowedSortKeys.includes(sort.key)) {
-                sql += ` ORDER BY ${sort.key} ${sortOrder}`;
-            } else {
-                sql += " ORDER BY platform ASC"; 
-            }
-        } else {
-            sql += " ORDER BY platform ASC"; 
-        }
+        if (sortKey && sortOrder) {
+            const order = sortOrder.toUpperCase() === 'DESC' ? 'DESC' : 'ASC';
+            const allowedSortKeys = ['platform', 'created_at', 'updated_at'];
+            if (allowedSortKeys.includes(sortKey)) {
+                sql += ` ORDER BY ${sortKey} ${order}`;
+            } else {
+                sql += " ORDER BY platform ASC"; 
+            }
+        } else {
+            sql += " ORDER BY platform ASC"; 
+        }
 
         const offset = (parseInt(pageIndex) - 1) * parseInt(pageSize);
         sql += " LIMIT ? OFFSET ?";

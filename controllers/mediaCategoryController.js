@@ -67,7 +67,10 @@ exports.createMediaCategory = async (req, res) => {
 
 exports.getAllMediaCategories = async (req, res) => {
     try {
-        const { query, pageIndex = 1, pageSize = 10, sort = {} } = req.query;
+        const { query, pageIndex = 1, pageSize = 10} = req.query;
+
+        const sortKey = req.query['sort[key]'];
+        const sortOrder = req.query['sort[order]'];
 
         let sql = "SELECT id, name, slug, created_at, updated_at FROM media_categories";
         let countSql = "SELECT COUNT(id) AS total FROM media_categories";
@@ -83,11 +86,11 @@ exports.getAllMediaCategories = async (req, res) => {
             countParams.push(searchQuery, searchQuery);
         }
 
-        if (sort.key && sort.order) {
+        if (sortKey && sortOrder) {
             const validSortKeys = ['name', 'created_at', 'updated_at', 'slug'];
-            if (validSortKeys.includes(sort.key)) {
-                const order = sort.order.toUpperCase() === 'DESC' ? 'DESC' : 'ASC';
-                sql += ` ORDER BY ${sort.key} ${order}`;
+            if (validSortKeys.includes(sortKey)) {
+                const order = sortOrder.toUpperCase() === 'DESC' ? 'DESC' : 'ASC';
+                sql += ` ORDER BY ${sortKey} ${order}`;
             } else {
                 sql += " ORDER BY name ASC";
             }

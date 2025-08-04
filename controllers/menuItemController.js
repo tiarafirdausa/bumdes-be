@@ -124,12 +124,14 @@ exports.getAllMenuItems = async (req, res) => {
             pageIndex = 1,
             pageSize = 10,
             query = '',
-            sort = {},
         } = req.query;
 
         if (!menuId) {
             return res.status(400).json({ error: "Parameter 'menuId' wajib diisi untuk mengambil item menu." });
         }
+
+        const sortKey = req.query['sort[key]'];
+        const sortOrder = req.query['sort[order]'];
 
         const offset = (parseInt(pageIndex) - 1) * parseInt(pageSize);
 
@@ -143,13 +145,17 @@ exports.getAllMenuItems = async (req, res) => {
 
         let orderByClause = ' ORDER BY parent_id ASC, `order` ASC, title ASC'; // Default sort
 
-        if (sort.order && sort.key) {
-            const sortOrder = sort.order === 'desc' ? 'DESC' : 'ASC';
-            const allowedSortKeys = ['title', 'type', 'order', 'created_at', 'updated_at'];
-            if (allowedSortKeys.includes(sort.key)) {
-                orderByClause = ` ORDER BY ${sort.key} ${sortOrder}, parent_id ASC, \`order\` ASC`;
-            }
-        }
+        if (sortKey && sortOrder) {
+            const order = sortOrder === 'desc' ? 'DESC' : 'ASC';
+            const allowedSortKeys = ['title', 'type', 'order', 'created_at', 'updated_at'];
+            if (allowedSortKeys.includes(sortKey)) {
+                let finalSortKey = sortKey;
+                if (finalSortKey === 'order') {
+                    finalSortKey = '`order`';
+                }
+                orderByClause = ` ORDER BY ${finalSortKey} ${order}, title ASC`;
+            }
+        }
 
         const [totalResult] = await db.query(
             `SELECT COUNT(id) AS total FROM menu_items${whereClause}`,

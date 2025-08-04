@@ -94,12 +94,13 @@ exports.getAllComments = async (req, res) => {
             query: search = "",
             status,
             postId,
-            sortKey = 'created_at',
-            sortOrder = 'desc'
         } = req.query;
 
         const offset = (parseInt(pageIndex) - 1) * parseInt(pageSize);
         const parsedPageSize = parseInt(pageSize);
+
+        const sortKey = req.query['sort[key]'] || 'created_at';
+        const sortOrder = req.query['sort[order]'] || 'desc';
 
         let whereClauses = [];
         let queryParams = [];

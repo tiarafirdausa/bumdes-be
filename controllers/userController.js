@@ -345,10 +345,12 @@ exports.getUsers = async (req, res) => {
             query, 
             pageIndex = 1,
             pageSize = 10,
-            sort = {},
             role, 
             status 
         } = req.query;
+
+        const sortKey = req.query['sort[key]'];
+        const sortOrder = req.query['sort[order]'];
 
         let sql = "SELECT id, name, email, username, role, foto, status FROM users";
         let countSql = "SELECT COUNT(id) AS total FROM users";
@@ -382,17 +384,17 @@ exports.getUsers = async (req, res) => {
             countSql += ` WHERE ${combinedWhere}`;
         }
 
-        if (sort.key && sort.order) {
-            const validSortKeys = ['id', 'name', 'email', 'username', 'role', 'status', 'created_at', 'updated_at']; // Tambahkan created_at/updated_at jika ada di tabel users
-            if (validSortKeys.includes(sort.key)) {
-                const order = sort.order.toUpperCase() === 'DESC' ? 'DESC' : 'ASC';
-                sql += ` ORDER BY ${sort.key} ${order}`;
-            } else {
-                sql += " ORDER BY name ASC";
-            }
-        } else {
-            sql += " ORDER BY name ASC";
-        }
+        if (sortKey && sortOrder) {
+            const validSortKeys = ['id', 'name', 'email', 'username', 'role', 'status', 'created_at', 'updated_at'];
+            if (validSortKeys.includes(sortKey)) {
+                const order = sortOrder.toUpperCase() === 'DESC' ? 'DESC' : 'ASC';
+                sql += ` ORDER BY ${sortKey} ${order}`;
+            } else {
+                sql += " ORDER BY name ASC";
+            }
+        } else {
+            sql += " ORDER BY name ASC";
+        }
 
         const offset = (parseInt(pageIndex) - 1) * parseInt(pageSize);
         sql += " LIMIT ? OFFSET ?";
