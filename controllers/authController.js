@@ -130,6 +130,24 @@ exports.logoutUser = (req, res) => {
   }
 };
 
+const getEmailSettings = async () => {
+    const [settings] = await db.query("SELECT `key`, `value` FROM settings WHERE `group` = 'email'");
+    const emailSettings = {};
+    settings.forEach(row => {
+        emailSettings[row.key] = row.value;
+    });
+
+    const isSecure = emailSettings.smtp_port === '465'; 
+    
+    return {
+        host: emailSettings.smtp_host,
+        port: parseInt(emailSettings.smtp_port),
+        user: emailSettings.smtp_username,
+        pass: emailSettings.smtp_password,
+        from: emailSettings.mail_from_address,
+    };
+};
+
 // --- Forgot Password ---
 exports.forgotPassword = async (req, res) => {
     const { email } = req.body;
@@ -151,13 +169,14 @@ exports.forgotPassword = async (req, res) => {
         const resetToken = crypto.randomBytes(32).toString('hex');
         const passwordResetToken = crypto.createHash('sha256').update(resetToken).digest('hex');
 
-        const resetPasswordExpires = new Date(Date.now() + 60 * 60 * 1000); // 1 jam dari sekarang
+        const resetPasswordExpires = new Date(Date.now() + 60 * 60 * 1000); 
 
         await db.query(
             "UPDATE users SET resetPasswordToken = ?, resetPasswordExpires = ? WHERE id = ?",
             [passwordResetToken, resetPasswordExpires, user.id]
         );
 
+        const smtpConfig = await getEmailSettings();
         const resetUrl = `${process.env.FRONTEND_URL}/reset-password?token=${resetToken}`;
 
         const message = `
@@ -173,6 +192,7 @@ exports.forgotPassword = async (req, res) => {
                 email: user.email,
                 subject: 'Reset Password Anda',
                 message,
+                smtpConfig
             });
 
             res.status(200).json({ message: 'Email reset password berhasil dikirim.' });

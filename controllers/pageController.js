@@ -573,7 +573,7 @@ exports.getPages = async (req, res) => {
       pageSize = 10,
       query: search = "",
       status = "",
-      author_id = "",
+      author_id,
       sort = {},
     } = req.query;
 

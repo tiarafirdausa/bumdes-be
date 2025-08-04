@@ -60,29 +60,28 @@ exports.createMediaCollection = async (req, res) => {
     connection = await db.getConnection();
     await connection.beginTransaction();
 
-    // 1. Masukkan data ke media_collection
     const [collectionResult] = await connection.query(
       "INSERT INTO media_collection (title, caption, category_id, uploaded_by, created_at) VALUES (?, ?, ?, ?, NOW())",
       [title || null, caption || null, category_id || null, uploaded_by]
     );
     const mediaCollectionId = collectionResult.insertId;
 
-    // 2. Masukkan data ke tabel media untuk setiap file
-    const mediaValues = uploadedFiles.map((file) => [
+    const mediaValues = uploadedFiles.map((file, index) => [
       mediaCollectionId,
       `/uploads/media/${file.filename}`,
-      file.originalname, // Menggunakan originalname sebagai fallback jika tidak ada alt_text
+      file.originalname,
+      index + 1, 
     ]);
 
     await connection.query(
-      "INSERT INTO media (media_collection_id, url, file_name) VALUES ?",
+      "INSERT INTO media (media_collection_id, url, file_name, sort_order) VALUES ?",
       [mediaValues]
     );
 
     await connection.commit();
 
     const [insertedFiles] = await db.query(
-      "SELECT id, file_name, url FROM media WHERE media_collection_id = ?",
+      "SELECT id, file_name, url, sort_order FROM media WHERE media_collection_id = ? ORDER BY sort_order",
       [mediaCollectionId]
     );
 
@@ -114,7 +113,7 @@ exports.createMediaCollection = async (req, res) => {
 
 exports.getMediaCollections = async (req, res) => {
   try {
-    const { pageIndex = 1, pageSize = 10, query: search = "" } = req.query;
+    const { pageIndex = 1, pageSize = 10, query: search = "", categoryId, authorId } = req.query;
     const offset = (parseInt(pageIndex) - 1) * parseInt(pageSize);
     const parsedPageSize = parseInt(pageSize);
 
@@ -128,34 +127,64 @@ exports.getMediaCollections = async (req, res) => {
       queryParams.push(`%${search}%`, `%${search}%`, `%${search}%`);
     }
 
+    if (categoryId && !isNaN(parseInt(categoryId))) {
+      whereClauses.push("mc.category_id = ?");
+      queryParams.push(parseInt(categoryId));
+    }
+
+    if (authorId && !isNaN(parseInt(authorId))) {
+      whereClauses.push("mc.uploaded_by = ?");
+      queryParams.push(parseInt(authorId));
+    }
+
     const whereSql =
       whereClauses.length > 0 ? `WHERE ${whereClauses.join(" AND ")}` : "";
 
     const [collections] = await db.query(
       `SELECT 
-         mc.id, mc.title, mc.caption, mc.created_at, mc.uploaded_by,
-         u.name AS uploaded_by_name,
-         mc_cat.name AS category_name,
-         mc_cat.id AS category_id
-       FROM media_collection mc
-       LEFT JOIN users u ON mc.uploaded_by = u.id
-       LEFT JOIN media_categories mc_cat ON mc.category_id = mc_cat.id
-       ${whereSql}
-       ORDER BY mc.created_at DESC
-       LIMIT ? OFFSET ?`,
+          mc.id, mc.title, mc.caption, mc.created_at, mc.uploaded_by,
+          u.name AS uploaded_by_name,
+          mc_cat.name AS category_name,
+          mc_cat.id AS category_id
+        FROM media_collection mc
+        LEFT JOIN users u ON mc.uploaded_by = u.id
+        LEFT JOIN media_categories mc_cat ON mc.category_id = mc_cat.id
+        ${whereSql}
+        ORDER BY mc.created_at DESC
+        LIMIT ? OFFSET ?`,
       [...queryParams, parsedPageSize, offset]
     );
 
     const [totalResults] = await db.query(
       `SELECT COUNT(mc.id) AS total FROM media_collection mc
-       LEFT JOIN users u ON mc.uploaded_by = u.id ${whereSql}`,
+        LEFT JOIN users u ON mc.uploaded_by = u.id ${whereSql}`,
       queryParams
     );
     const totalItems = totalResults[0].total;
     const totalPages = Math.ceil(totalItems / parsedPageSize);
 
+    const collectionIds = collections.map((col) => col.id);
+    let allMediaFiles = [];
+
+    if (collectionIds.length > 0) {
+      const [mediaFiles] = await db.query(
+        `SELECT id, media_collection_id, url FROM media WHERE media_collection_id IN (?)`,
+        [collectionIds]
+      );
+      allMediaFiles = mediaFiles;
+    }
+
+    const collectionsWithMedia = collections.map((collection) => ({
+      ...collection,
+      media: allMediaFiles.filter((file) => file.media_collection_id === collection.id),
+      uploaded_by_user: {
+        id: collection.uploaded_by,
+        name: collection.uploaded_by_name
+      }
+    }));
+
     res.status(200).json({
-      data: collections,
+      data: collectionsWithMedia,
       pagination: {
         totalItems,
         totalPages,
@@ -178,14 +207,14 @@ exports.getMediaCollectionById = async (req, res) => {
 
     const [collection] = await db.query(
       `SELECT 
-         mc.id, mc.title, mc.caption, mc.created_at, mc.uploaded_by,
-         u.name AS uploaded_by_name,
-         mc_cat.name AS category_name,
-         mc_cat.id AS category_id
-       FROM media_collection mc
-       LEFT JOIN users u ON mc.uploaded_by = u.id
-       LEFT JOIN media_categories mc_cat ON mc.category_id = mc_cat.id
-       WHERE mc.id = ?`,
+          mc.id, mc.title, mc.caption, mc.created_at, mc.uploaded_by,
+          u.name AS uploaded_by_name,
+          mc_cat.name AS category_name,
+          mc_cat.id AS category_id
+        FROM media_collection mc
+        LEFT JOIN users u ON mc.uploaded_by = u.id
+        LEFT JOIN media_categories mc_cat ON mc.category_id = mc_cat.id
+        WHERE mc.id = ?`,
       [id]
     );
 
@@ -193,8 +222,9 @@ exports.getMediaCollectionById = async (req, res) => {
       return res.status(404).json({ error: "Koleksi media tidak ditemukan." });
     }
 
+    // Mengambil file dan mengurutkannya berdasarkan sort_order
     const [files] = await db.query(
-      "SELECT id, file_name, url FROM media WHERE media_collection_id = ?",
+      "SELECT id, file_name, url, sort_order FROM media WHERE media_collection_id = ? ORDER BY sort_order",
       [id]
     );
 
@@ -221,19 +251,16 @@ exports.deleteMediaCollection = async (req, res) => {
     connection = await db.getConnection();
     await connection.beginTransaction();
 
-    // Ambil path file yang akan dihapus
     const [filesToDelete] = await connection.query(
       "SELECT url FROM media WHERE media_collection_id = ?",
       [id]
     );
     const filePathsToDelete = filesToDelete.map((f) => f.url);
 
-    // Hapus entri dari tabel 'media'
     await connection.query("DELETE FROM media WHERE media_collection_id = ?", [
       id,
     ]);
 
-    // Hapus entri dari tabel 'media_collection'
     const [result] = await connection.query(
       "DELETE FROM media_collection WHERE id = ?",
       [id]
@@ -245,7 +272,6 @@ exports.deleteMediaCollection = async (req, res) => {
       return res.status(404).json({ error: "Koleksi media tidak ditemukan." });
     }
 
-    // Hapus file fisik dari server
     deleteMultipleFiles(filePathsToDelete, "deleteMediaCollection");
 
     res.status(200).json({ message: "Koleksi media berhasil dihapus." });
@@ -265,7 +291,7 @@ exports.updateMediaCollection = async (req, res) => {
   let connection;
   try {
     const { id } = req.params;
-    const { title, caption, category_id, delete_media_file_ids } = req.body;
+    const { title, caption, category_id, delete_media_file_ids, updated_sort_order } = req.body;
     const uploadedFiles = req.files;
 
     if (!id) {
@@ -275,7 +301,6 @@ exports.updateMediaCollection = async (req, res) => {
     let updateFields = [];
     let updateValues = [];
 
-    // Ambil data koleksi lama untuk validasi
     const [oldCollection] = await db.query(
       "SELECT id FROM media_collection WHERE id = ?",
       [id]
@@ -304,11 +329,13 @@ exports.updateMediaCollection = async (req, res) => {
       updateValues.push(category_id || null);
     }
 
-    // Jika tidak ada data yang perlu diperbarui, langsung kembalikan respons
+    updateFields.push("updated_at = NOW()");
+
     if (
-      updateFields.length === 0 &&
+      updateFields.length === 1 &&
       (!delete_media_file_ids || delete_media_file_ids === "[]") &&
-      (!uploadedFiles || uploadedFiles.length === 0)
+      (!uploadedFiles || uploadedFiles.length === 0) &&
+      !updated_sort_order
     ) {
       return res.status(400).json({ error: "Tidak ada data yang disediakan untuk diperbarui." });
     }
@@ -349,21 +376,52 @@ exports.updateMediaCollection = async (req, res) => {
       }
     }
 
+    if (updated_sort_order && updated_sort_order !== "[]") {
+        const sortOrderUpdates = JSON.parse(updated_sort_order);
+        if (sortOrderUpdates.length > 0) {
+            let caseStatements = '';
+            let caseValues = [];
+            let idsToUpdate = [];
+    
+            sortOrderUpdates.forEach(item => {
+                caseStatements += `WHEN id = ? THEN ? `;
+                caseValues.push(item.id, item.sort_order);
+                idsToUpdate.push(item.id);
+            });
+    
+            const placeholders = idsToUpdate.map(() => "?").join(",");
+            const updateSortOrderQuery = `
+                UPDATE media
+                SET sort_order = CASE ${caseStatements} END
+                WHERE id IN (${placeholders}) AND media_collection_id = ?
+            `;
+            
+            await connection.query(updateSortOrderQuery, [...caseValues, ...idsToUpdate, id]);
+        }
+    }
+
     let newFiles = [];
     if (uploadedFiles && uploadedFiles.length > 0) {
-        const fileValues = uploadedFiles.map(file => [
+        const [maxSortOrderResult] = await connection.query(
+            "SELECT COALESCE(MAX(sort_order), 0) AS max_order FROM media WHERE media_collection_id = ?",
+            [id]
+        );
+        let nextSortOrder = maxSortOrderResult[0].max_order + 1;
+
+        const fileValues = uploadedFiles.map((file, index) => [
             id,
             `/uploads/media/${file.filename}`,
-            file.originalname
+            file.originalname,
+            nextSortOrder + index 
         ]);
 
         await connection.query(
-          "INSERT INTO media (media_collection_id, url, file_name) VALUES ?",
+          "INSERT INTO media (media_collection_id, url, file_name, sort_order) VALUES ?",
           [fileValues]
         );
 
         const [insertedFiles] = await connection.query(
-            "SELECT id, file_name, url FROM media WHERE media_collection_id = ? AND url IN (?)",
+            "SELECT id, file_name, url, sort_order FROM media WHERE media_collection_id = ? AND url IN (?)",
             [id, fileValues.map(v => v[1])]
         );
         newFiles = insertedFiles;
@@ -372,7 +430,7 @@ exports.updateMediaCollection = async (req, res) => {
     await connection.commit();
 
     const [finalFiles] = await db.query(
-      "SELECT id, file_name, url FROM media WHERE media_collection_id = ?",
+      "SELECT id, file_name, url, sort_order FROM media WHERE media_collection_id = ? ORDER BY sort_order",
       [id]
     );
 
@@ -382,6 +440,7 @@ exports.updateMediaCollection = async (req, res) => {
         title,
         caption,
         category_id,
+        updated_at: new Date().toISOString()
       },
       files: finalFiles,
       deleted_file_ids: deletedFileIds,
