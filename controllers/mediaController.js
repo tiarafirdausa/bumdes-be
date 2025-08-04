@@ -142,7 +142,7 @@ exports.getMediaCollections = async (req, res) => {
 
     const [collections] = await db.query(
       `SELECT 
-          mc.id, mc.title, mc.caption, mc.created_at, mc.uploaded_by,
+          mc.id, mc.title, mc.caption, mc.created_at, mc.uploaded_by, mc.updated_at,
           u.name AS uploaded_by_name,
           mc_cat.name AS category_name,
           mc_cat.id AS category_id
@@ -429,6 +429,19 @@ exports.updateMediaCollection = async (req, res) => {
 
     await connection.commit();
 
+    const [updatedCollection] = await db.query(
+      `SELECT 
+          mc.id, mc.title, mc.caption, mc.created_at, mc.uploaded_by, mc.updated_at,
+          u.name AS uploaded_by_name,
+          mc_cat.name AS category_name,
+          mc_cat.id AS category_id
+        FROM media_collection mc
+        LEFT JOIN users u ON mc.uploaded_by = u.id
+        LEFT JOIN media_categories mc_cat ON mc.category_id = mc_cat.id
+        WHERE mc.id = ?`,
+      [id]
+    );
+
     const [finalFiles] = await db.query(
       "SELECT id, file_name, url, sort_order FROM media WHERE media_collection_id = ? ORDER BY sort_order",
       [id]
@@ -436,12 +449,7 @@ exports.updateMediaCollection = async (req, res) => {
 
     res.status(200).json({
       message: "Koleksi media berhasil diperbarui.",
-      updated_metadata: {
-        title,
-        caption,
-        category_id,
-        updated_at: new Date().toISOString()
-      },
+      ...updatedCollection[0],
       files: finalFiles,
       deleted_file_ids: deletedFileIds,
       new_files: newFiles
