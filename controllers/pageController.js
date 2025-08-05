@@ -17,7 +17,7 @@ const deleteFile = (filePath, context) => {
     return;
   }
 
-  const fullPath = path.join(__dirname, "..", "..", filePath);
+  const fullPath = path.join(__dirname, "..", "..", "public", filePath);
 
   if (fs.existsSync(fullPath)) {
     fs.unlink(fullPath, (unlinkErr) => {

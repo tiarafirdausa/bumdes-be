@@ -3,6 +3,8 @@ const db = require("../models/db");
 const path = require("path");
 const fs = require("fs");
 
+const projectRoot = path.join(__dirname, "..", "..");
+
 const deleteFile = (filePath, context) => {
   if (
     !filePath ||
@@ -16,7 +18,8 @@ const deleteFile = (filePath, context) => {
     return;
   }
 
-  const fullPath = path.join(__dirname, "..", filePath);
+  const fullPath = path.join(projectRoot, "public", filePath);
+  
   if (fs.existsSync(fullPath)) {
     fs.unlink(fullPath, (unlinkErr) => {
       if (unlinkErr)
@@ -721,7 +724,7 @@ exports.getPosts = async (req, res) => {
       "author_id",
     ];
     let orderBySql = "p.published_at DESC, p.created_at DESC";
-    
+
     if (sortKey && sortOrder) {
       let finalSortBy = allowedSortKeys.includes(sortKey)
         ? `p.${sortKey}`
