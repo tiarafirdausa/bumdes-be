@@ -55,13 +55,11 @@ exports.createUser = async (req, res) => {
         return res.status(409).json({ error: "Email sudah terdaftar." });
     }
 
-    // --- Hash Password dan Set Status Default ---
     const hashedPassword = await bcrypt.hash(password, 10);
     const userStatus = ['active', 'suspended'].includes(status) ? status : 'active';
 
-    // --- Insert Data Pengguna ke Database ---
     const [result] = await db.query(
-      "INSERT INTO users (name, email, username, password, role, foto, status) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      "INSERT INTO users (name, email, username, password, role, foto, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), NOW())",
       [name, email, username, hashedPassword, role, fotoPath, userStatus] 
     );
 
@@ -275,7 +273,8 @@ exports.updateUser = async (req, res) => {
         }
       }
     }
-
+ 
+    updateFields.push("updated_at = NOW()");
 
     if (updateFields.length === 0) {
       return res
@@ -352,7 +351,7 @@ exports.getUsers = async (req, res) => {
         const sortKey = req.query['sort[key]'];
         const sortOrder = req.query['sort[order]'];
 
-        let sql = "SELECT id, name, email, username, role, foto, status FROM users";
+        let sql = "SELECT id, name, email, username, role, foto, status, created_at, updated_at FROM users";
         let countSql = "SELECT COUNT(id) AS total FROM users";
         
         const whereClauses = [];
@@ -456,7 +455,7 @@ exports.getUserById = async (req, res) => {
   try {
     const { id } = req.params;
     const [users] = await db.query(
-      "SELECT id, username, name, email, role, foto, status FROM users WHERE id = ?",
+      "SELECT id, username, name, email, role, foto, status, created_at, updated_at FROM users WHERE id = ?",
       [id]
     );
 

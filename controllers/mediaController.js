@@ -465,15 +465,7 @@ exports.updateMediaCollection = async (req, res) => {
     await connection.commit();
 
     const [updatedCollection] = await db.query(
-      `SELECT 
-          mc.id, mc.title, mc.caption, mc.created_at, mc.uploaded_by, mc.updated_at,
-          u.name AS uploaded_by_name,
-          mc_cat.name AS category_name,
-          mc_cat.id AS category_id
-        FROM media_collection mc
-        LEFT JOIN users u ON mc.uploaded_by = u.id
-        LEFT JOIN media_categories mc_cat ON mc.category_id = mc_cat.id
-        WHERE mc.id = ?`,
+      `SELECT mc.id, mc.title, mc.caption, mc.created_at, mc.uploaded_by, mc.updated_at, u.name AS uploaded_by_name, mc_cat.name AS category_name, mc_cat.id AS category_id FROM media_collection mc LEFT JOIN users u ON mc.uploaded_by = u.id LEFT JOIN media_categories mc_cat ON mc.category_id = mc_cat.id WHERE mc.id = ?`,
       [id]
     );
 
