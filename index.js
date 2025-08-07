@@ -35,10 +35,13 @@ app.use(cookieParser());
 //   xContentTypeOptions: false, 
 // }));
 
+const frontendUrlsString = process.env.FRONTEND_URLS;
+const allowedOrigins = frontendUrlsString ? frontendUrlsString.split(',') : [];
+
 app.set('trust proxy', 1);
 app.use(
   cors({
-    origin: process.env.FRONTEND_URL,
+    origin: allowedOrigins,
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
     allowedHeaders: ["Content-Type", "Authorization", "X-CSRF-Token"],

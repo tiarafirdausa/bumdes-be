@@ -217,3 +217,29 @@ exports.deleteMenu = async (req, res) => {
     res.status(500).json({ error: "Gagal menghapus definisi menu", details: error.message });
   }
 };
+
+
+exports.getMenuWithItemsBySlug = async (req, res) => {
+    try {
+        const { slug } = req.params;
+        const [menus] = await db.query("SELECT id, name FROM menus WHERE slug = ?", [slug]);
+        if (menus.length === 0) {
+            return res.status(404).json({ error: "Menu tidak ditemukan" });
+        }
+        const menuId = menus[0].id;
+        const [menuItems] = await db.query(
+            "SELECT id, parent_id, title, url, type FROM menu_items WHERE menu_id = ? ORDER BY `order` ASC",
+            [menuId]
+        );
+        res.status(200).json({
+            menu: menus[0],
+            items: menuItems,
+        });
+    } catch (error) {
+        console.error("Error fetching menu and items by slug:", error);
+        res.status(500).json({
+            error: "Gagal mengambil menu dan item",
+            details: error.message
+        });
+    }
+};
