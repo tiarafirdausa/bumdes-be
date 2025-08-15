@@ -92,6 +92,13 @@ exports.updateSettings = async (req, res) => {
       smtp_username,
       smtp_password,
       clear_logo, 
+      // Pengaturan baru ditambahkan di sini
+      maps_url,
+      address,
+      phone,
+      power,
+      power_url,
+      short_title,
     } = req.body;
 
     const logoFile = req.files && req.files.logo ? req.files.logo[0] : null;
@@ -129,6 +136,14 @@ exports.updateSettings = async (req, res) => {
     await updateSingleSetting("smtp_port", smtp_port, "number");
     await updateSingleSetting("smtp_username", smtp_username, "string");
     await updateSingleSetting("smtp_password", smtp_password, "string");
+
+    // Panggil fungsi updateSingleSetting untuk setiap pengaturan baru
+    await updateSingleSetting("maps_url", maps_url, "text");
+    await updateSingleSetting("address", address, "text");
+    await updateSingleSetting("phone", phone, "string");
+    await updateSingleSetting("power", power, "string");
+    await updateSingleSetting("power_url", power_url, "text");
+    await updateSingleSetting("short_title", short_title, "string");
 
     const currentLogoValue = currentSettingsMap.get('logo')?.value;
 

@@ -16,11 +16,11 @@ exports.addComment = async (req, res) => {
       return res.status(404).json({ error: "Postingan tidak ditemukan." });
     }
 
-    const query = `
-      INSERT INTO comments (post_id, author_name, content, status, created_at)
-      VALUES (?, ?, ?, ?, NOW())
-    `;
-    const values = [post_id, author_name, content, 'pending']; 
+    const query = `
+    INSERT INTO comments (post_id, author_name, content, status, created_at) 
+    VALUES (?, ?, ?, 'pending', NOW())
+    `;    
+    const values = [post_id, author_name, content, 'pending']; 
     const [result] = await db.query(query, values);
 
     if (result.affectedRows === 1) {
@@ -52,16 +52,7 @@ exports.getCommentsByPostId = async (req, res) => {
     const { postId } = req.params; 
     const { status } = req.query;
 
-    let query = `
-      SELECT
-          c.id, c.post_id, c.author_name, c.content, c.status, c.created_at,
-          p.title AS post_title, p.slug AS post_slug
-      FROM
-          comments c
-      JOIN
-          posts p ON c.post_id = p.id
-      WHERE c.post_id = ?
-    `;
+    let query = `SELECT c.id, c.post_id, c.author_name, c.content, c.status, c.created_at, p.title AS post_title, p.slug AS post_slug FROM comments c JOIN posts p ON c.post_id = p.id WHERE c.post_id = ?`;
     const queryParams = [postId];
 
     if (status && ['pending', 'approved', 'spam'].includes(status)) {
@@ -211,4 +202,43 @@ exports.deleteComment = async (req, res) => {
         details: error.message,
       });
   }
+};
+
+exports.getCommentsByPostBySlug = async (req, res) => {
+  try {
+    const { slug } = req.params; 
+    const { status } = req.query;
+
+    const [postResult] = await db.query(
+      "SELECT id FROM posts WHERE slug = ?",
+      [slug]
+    );
+
+    if (postResult.length === 0) {
+      return res.status(404).json({ error: "Postingan tidak ditemukan." });
+    }
+
+    const postId = postResult[0].id;
+
+    let query = `SELECT c.id, c.post_id, c.author_name, c.content, c.status, c.created_at, p.title AS post_title, p.slug AS post_slug FROM comments c JOIN posts p ON c.post_id = p.id WHERE c.post_id = ?`;
+    const queryParams = [postId];
+
+    if (status && ['pending', 'approved', 'spam'].includes(status)) {
+      query += ` AND c.status = ?`;
+      queryParams.push(status);
+    } else {
+      query += ` AND c.status = 'approved'`;
+    }
+
+    query += ` ORDER BY c.created_at DESC`;
+
+    const [comments] = await db.query(query, queryParams);
+    res.status(200).json(comments);
+  } catch (error) {
+    console.error("Error fetching comments by post slug:", error);
+    res.status(500).json({
+      error: "Gagal mengambil daftar komentar",
+      details: error.message,
+    });
+  }
 };

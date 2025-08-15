@@ -505,3 +505,117 @@ exports.updateMediaCollection = async (req, res) => {
     if (connection) connection.release();
   }
 };
+
+
+exports.getMediaCollectionsByCategory = async (req, res) => {
+  try {
+    const { categoryId } = req.params;
+    const {
+      pageIndex = 1,
+      pageSize = 10,
+      query: search = "",
+      authorId,
+    } = req.query;
+
+    const sortKey = req.query["sort[key]"];
+    const sortOrder = req.query["sort[order]"];
+
+    const offset = (parseInt(pageIndex) - 1) * parseInt(pageSize);
+    const parsedPageSize = parseInt(pageSize);
+
+    let whereClauses = [];
+    let queryParams = [];
+
+    // Logika filter utama
+    if (search) {
+      whereClauses.push(
+        "(mc.title LIKE ? OR mc.caption LIKE ? OR u.name LIKE ?)"
+      );
+      queryParams.push(`%${search}%`, `%${search}%`, `%${search}%`);
+    }
+
+    if (authorId && !isNaN(parseInt(authorId))) {
+      whereClauses.push("mc.uploaded_by = ?");
+      queryParams.push(parseInt(authorId));
+    }
+
+    // Tambahkan filter kategori dari req.params
+    if (categoryId && !isNaN(parseInt(categoryId))) {
+      whereClauses.push("mc.category_id = ?");
+      queryParams.push(parseInt(categoryId));
+    } else {
+      return res.status(400).json({ error: "ID kategori tidak valid." });
+    }
+
+    const whereSql =
+      whereClauses.length > 0 ? `WHERE ${whereClauses.join(" AND ")}` : "";
+
+    let orderByClause = "ORDER BY mc.created_at DESC";
+    if (sortKey && sortOrder) {
+      let finalSortBy; 
+      if (sortKey === "uploaded_by_user.name") {
+        finalSortBy = "u.name";
+      } else if (
+        sortKey === "title" ||
+        sortKey === "created_at" ||
+        sortKey === "updated_at"
+      ) {
+        finalSortBy = `mc.${sortKey}`;
+      }
+
+      if (finalSortBy) {
+        const finalOrder = sortOrder.toUpperCase() === "DESC" ? "DESC" : "ASC";
+        orderByClause = `ORDER BY ${finalSortBy} ${finalOrder}`;
+      }
+    } 
+    const [collections] = await db.query(
+      `SELECT mc.id, mc.title, mc.caption, mc.created_at, mc.uploaded_by, mc.updated_at, u.name AS uploaded_by_name, mc_cat.name AS category_name,mc_cat.id AS category_id FROM media_collection mc LEFT JOIN users u ON mc.uploaded_by = u.id LEFT JOIN media_categories mc_cat ON mc.category_id = mc_cat.id ${whereSql} ${orderByClause} LIMIT ? OFFSET ?`,
+      [...queryParams, parsedPageSize, offset]
+    );
+
+    const [totalResults] = await db.query(
+      `SELECT COUNT(mc.id) AS total FROM media_collection mc LEFT JOIN users u ON mc.uploaded_by = u.id ${whereSql}`,
+      queryParams
+    );
+    const totalItems = totalResults[0].total;
+    const totalPages = Math.ceil(totalItems / parsedPageSize);
+
+    const collectionIds = collections.map((col) => col.id);
+    let allMediaFiles = [];
+
+    if (collectionIds.length > 0) {
+      const [mediaFiles] = await db.query(
+        `SELECT id, media_collection_id, url FROM media WHERE media_collection_id IN (?)`,
+        [collectionIds]
+      );
+      allMediaFiles = mediaFiles;
+    }
+
+    const collectionsWithMedia = collections.map((collection) => ({
+      ...collection,
+      media: allMediaFiles.filter(
+        (file) => file.media_collection_id === collection.id
+      ),
+      uploaded_by_user: {
+        id: collection.uploaded_by,
+        name: collection.uploaded_by_name,
+      },
+    }));
+
+    res.status(200).json({
+      data: collectionsWithMedia,
+      pagination: {
+        totalItems,
+        totalPages,
+        currentPage: parseInt(pageIndex),
+        itemsPerPage: parsedPageSize,
+      },
+    });
+  } catch (error) {
+    console.error("Error fetching media collections by category:", error);
+    res.status(500).json({
+      error: "Gagal mengambil daftar koleksi media berdasarkan kategori.",
+      details: error.message,
+    });
+  }
+};

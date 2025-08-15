@@ -49,8 +49,6 @@ exports.createPage = async (req, res) => {
       author_id,
       meta_title,
       meta_description,
-      status,
-      published_at,
     } = req.body;
 
     const uploadedFiles = req.files;
@@ -114,21 +112,11 @@ exports.createPage = async (req, res) => {
         ? meta_description
         : title;
 
-    const finalStatus = ["draft", "published", "archived"].includes(status)
-      ? status
-      : "draft";
-    const finalPublishedAt =
-      finalStatus === "published" && published_at
-        ? new Date(published_at)
-        : finalStatus === "published"
-        ? new Date()
-        : null;
-
     connection = await db.getConnection();
     await connection.beginTransaction();
 
     const [pageResult] = await connection.query(
-      "INSERT INTO pages (title, slug, content, author_id, meta_title, meta_description, featured_image, status, published_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())",
+      "INSERT INTO pages (title, slug, content, author_id, meta_title, meta_description, featured_image, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), NOW())",
       [
         title,
         slug,
@@ -137,8 +125,6 @@ exports.createPage = async (req, res) => {
         finalMetaTitle,
         finalMetaDescription,
         featured_image_path,
-        finalStatus,
-        finalPublishedAt,
       ]
     );
     const pageId = pageResult.insertId;
@@ -188,8 +174,6 @@ exports.createPage = async (req, res) => {
       meta_description: finalMetaDescription,
       featured_image: featured_image_path,
       gallery_images: insertedGalleryImages,
-      status: finalStatus,
-      published_at: finalPublishedAt,
       message: "Halaman berhasil dibuat.",
     });
   } catch (error) {
@@ -240,8 +224,6 @@ exports.updatePage = async (req, res) => {
       author_id,
       meta_title,
       meta_description,
-      status,
-      published_at,
       clear_featured_image,
       delete_gallery_image_ids,
       updated_gallery_images_order,
@@ -257,7 +239,7 @@ exports.updatePage = async (req, res) => {
     let updateValues = [];
     let responseBody = {};
     const [oldPageData] = await db.query(
-      "SELECT featured_image, status FROM pages WHERE id = ?",
+      "SELECT featured_image FROM pages WHERE id = ?",
       [id]
     );
     if (oldPageData.length === 0) {
@@ -276,7 +258,6 @@ exports.updatePage = async (req, res) => {
       return res.status(404).json({ error: "Halaman tidak ditemukan." });
     }
     const oldFeaturedImagePath = oldPageData[0].featured_image;
-    const oldStatus = oldPageData[0].status;
 
     if (title !== undefined) {
       const [existingTitle] = await db.query(
@@ -368,28 +349,6 @@ exports.updatePage = async (req, res) => {
     if (meta_description !== undefined) {
       updateFields.push("meta_description = ?");
       updateValues.push(meta_description === "" ? null : meta_description);
-    }
-
-    let calculatedPublishedAt = null;
-    if (
-      status !== undefined &&
-      ["draft", "published", "archived"].includes(status)
-    ) {
-      updateFields.push("status = ?");
-      updateValues.push(status);
-      if (status === "published" && oldStatus !== "published") {
-        calculatedPublishedAt = new Date();
-      }
-    }
-    if (published_at !== undefined) {
-      calculatedPublishedAt = published_at ? new Date(published_at) : null;
-    }
-    if (
-      calculatedPublishedAt !== null ||
-      (published_at !== undefined && published_at === null)
-    ) {
-      updateFields.push("published_at = ?");
-      updateValues.push(calculatedPublishedAt);
     }
 
     if (newFeaturedImagePath !== undefined) {
@@ -572,7 +531,6 @@ exports.getPages = async (req, res) => {
       pageIndex = 1,
       pageSize = 10,
       query: search = "",
-      status = "",
       author_id,
     } = req.query;
 
@@ -592,11 +550,6 @@ exports.getPages = async (req, res) => {
       queryParams.push(`%${search}%`, `%${search}%`, `%${search}%`);
     }
 
-    if (status) {
-      whereClauses.push("p.status = ?");
-      queryParams.push(status);
-    }
-
     if (author_id) {
       whereClauses.push("p.author_id = ?");
       queryParams.push(author_id);
@@ -608,34 +561,32 @@ exports.getPages = async (req, res) => {
     let orderBySql = "ORDER BY p.created_at DESC";
     
     if (sortKey && sortOrder) {
-      const allowedSortColumns = [
-        "id",
-        "title",
-        "slug",
-        "created_at",
-        "updated_at",
-        "published_at",
-        "status",
-        "author_id",
-      ];
-      let finalSortBy = allowedSortColumns.includes(sortKey)
-        ? `p.${sortKey}`
-        : "p.created_at";
-      if (sortKey === "author_name") {
-        finalSortBy = "u.name";
-      }
-      const finalOrder =
-        sortOrder.toUpperCase() === "ASC" ||
-        sortOrder.toUpperCase() === "DESC"
-          ? sortOrder.toUpperCase()
-          : "DESC";
-      orderBySql = `ORDER BY ${finalSortBy} ${finalOrder}`;
-    }
+      const allowedSortColumns = [
+        "id",
+        "title",
+        "slug",
+        "created_at",
+        "updated_at",
+        "author_id",
+      ];
+      let finalSortBy = allowedSortColumns.includes(sortKey)
+        ? `p.${sortKey}`
+        : "p.created_at";
+      if (sortKey === "author_name") {
+        finalSortBy = "u.name";
+      }
+      const finalOrder =
+        sortOrder.toUpperCase() === "ASC" ||
+        sortOrder.toUpperCase() === "DESC"
+          ? sortOrder.toUpperCase()
+          : "DESC";
+      orderBySql = `ORDER BY ${finalSortBy} ${finalOrder}`;
+    }
 
     const [pages] = await db.query(
       `SELECT
           p.id, p.title, p.slug, p.content, p.author_id, p.meta_title, p.meta_description,
-          p.featured_image, p.status, p.published_at, p.created_at, p.updated_at,
+          p.featured_image, p.created_at, p.updated_at,
           u.name AS author_name
         FROM
           pages p
@@ -693,7 +644,7 @@ exports.getPageById = async (req, res) => {
     const { id } = req.params;
 
     const [page] = await db.query(
-      "SELECT id, title, slug, content, author_id, meta_title, meta_description, featured_image, status, published_at, created_at, updated_at FROM pages WHERE id = ?",
+      "SELECT id, title, slug, content, author_id, meta_title, meta_description, featured_image, created_at, updated_at FROM pages WHERE id = ?",
       [id]
     );
 
@@ -726,7 +677,7 @@ exports.getPageBySlug = async (req, res) => {
     const [page] = await db.query(
       `SELECT
           p.id, p.title, p.slug, p.content, p.author_id, p.meta_title, p.meta_description,
-          p.featured_image, p.status, p.published_at, p.created_at, p.updated_at,
+          p.featured_image, p.created_at, p.updated_at,
           u.name AS author_name
         FROM
           pages p

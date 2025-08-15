@@ -4,6 +4,7 @@ const router = express.Router();
 const commentController = require('../controllers/commentController'); 
 router.post('/', commentController.addComment); 
 router.get('/post/:postId', commentController.getCommentsByPostId); 
+router.get('/:slug', commentController.getCommentsByPostBySlug);
 router.get('/', commentController.getAllComments);
 router.delete('/:id', commentController.deleteComment);
 router.put('/:id/status', commentController.updateCommentStatus);

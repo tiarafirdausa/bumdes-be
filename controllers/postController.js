@@ -53,16 +53,10 @@ exports.createPost = async (req, res) => {
       meta_description,
       status,
       published_at,
+      category_id, 
     } = req.body;
 
-    let categories = req.body.categories;
     let tags = req.body.tags;
-
-    if (categories === undefined) {
-      categories = [];
-    } else if (!Array.isArray(categories)) {
-      categories = [categories];
-    }
 
     if (tags === undefined) {
       tags = [];
@@ -127,15 +121,22 @@ exports.createPost = async (req, res) => {
 
     const finalMetaTitle =
       meta_title !== undefined && meta_title !== "" ? meta_title : title;
+    
+    const finalExcerpt =
+      excerpt && excerpt.length > 0
+          ? excerpt
+          : content.substring(0, 150) + (content.length > 150 ? "..." : "");
+
     const finalMetaDescription =
-      meta_description !== undefined && meta_description !== ""
-        ? meta_description
-        : excerpt || title;
+        meta_description && meta_description.length > 0
+            ? meta_description
+            : finalExcerpt;
 
     const finalStatus = ["draft", "published", "archived"].includes(status)
       ? status
       : "draft";
-    const finalPublishedAt =
+    
+      const finalPublishedAt =
       finalStatus === "published" && published_at
         ? new Date(published_at)
         : finalStatus === "published"
@@ -146,16 +147,17 @@ exports.createPost = async (req, res) => {
     await connection.beginTransaction();
 
     const [postResult] = await connection.query(
-      "INSERT INTO posts (title, slug, excerpt, content, featured_image, meta_title, meta_description, author_id, status, published_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())",
+      "INSERT INTO posts (title, slug, excerpt, content, featured_image, meta_title, meta_description, author_id, category_id, status, published_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())",
       [
         title,
         slug,
-        excerpt || null,
+        finalExcerpt,
         content,
         featured_image_path,
         finalMetaTitle,
         finalMetaDescription,
         author_id,
+        category_id,
         finalStatus,
         finalPublishedAt,
       ]
@@ -179,18 +181,7 @@ exports.createPost = async (req, res) => {
       );
     }
 
-    // Insert post categories
-    if (categories.length > 0) {
-      const categoryValues = categories.map((catId) => [
-        postId,
-        parseInt(catId),
-      ]); // Pastikan catId adalah integer
-      await connection.query(
-        "INSERT IGNORE INTO post_categories (post_id, category_id) VALUES ?",
-        [categoryValues]
-      );
-    }
-
+    // Insert post tags
     if (tags.length > 0) {
       const tagValues = tags.map((tagId) => [postId, parseInt(tagId)]); // Pastikan tagId adalah integer
       await connection.query(
@@ -212,9 +203,9 @@ exports.createPost = async (req, res) => {
       meta_title: finalMetaTitle,
       meta_description: finalMetaDescription,
       author_id,
+      category_id,
       status: finalStatus,
       published_at: finalPublishedAt,
-      categories: categories.map((id) => parseInt(id)),
       tags: tags.map((id) => parseInt(id)),
       message: "Postingan berhasil dibuat.",
     });
@@ -253,390 +244,387 @@ exports.createPost = async (req, res) => {
 };
 
 exports.updatePost = async (req, res) => {
-    let connection;
-    try {
-        const { id } = req.params;
-        const {
-            title,
-            newSlug,
-            excerpt,
-            content,
-            author_id,
-            meta_title,
-            meta_description,
-            status,
-            published_at,
-            clear_featured_image,
-            clear_gallery_images,
-            delete_gallery_image_ids,
-        } = req.body;
-        
-        let parsed_delete_gallery_image_ids = [];
-        if (delete_gallery_image_ids) {
-            try {
-                parsed_delete_gallery_image_ids = JSON.parse(delete_gallery_image_ids);
-                if (!Array.isArray(parsed_delete_gallery_image_ids)) {
-                    parsed_delete_gallery_image_ids = [];
-                }
-            } catch (e) {
-                console.error("Failed to parse delete_gallery_image_ids:", e);
-                parsed_delete_gallery_image_ids = [];
-            }
+  let connection;
+  try {
+    const { id } = req.params;
+    const {
+      title,
+      newSlug,
+      excerpt,
+      content,
+      author_id,
+      meta_title,
+      meta_description,
+      status,
+      published_at,
+      clear_featured_image,
+      clear_gallery_images,
+      delete_gallery_image_ids,
+      category_id, 
+    } = req.body;
+
+    let parsed_delete_gallery_image_ids = [];
+    if (delete_gallery_image_ids) {
+      try {
+        parsed_delete_gallery_image_ids = JSON.parse(delete_gallery_image_ids);
+        if (!Array.isArray(parsed_delete_gallery_image_ids)) {
+          parsed_delete_gallery_image_ids = [];
+        }
+      } catch (e) {
+        console.error("Failed to parse delete_gallery_image_ids:", e);
+        parsed_delete_gallery_image_ids = [];
+      }
+    }
+
+    let tags = req.body.tags;
+
+    if (tags === undefined) {
+      tags = [];
+    } else if (!Array.isArray(tags)) {
+      tags = [tags];
+    }
+
+    const uploadedFiles = req.files;
+
+    let newFeaturedImagePath = undefined;
+    if (uploadedFiles && uploadedFiles.featured_image) {
+      newFeaturedImagePath = `/uploads/posts/${uploadedFiles.featured_image[0].filename}`;
+    }
+
+    let updateFields = [];
+    let updateValues = [];
+    let responseBody = {};
+
+    const [oldPost] = await db.query(
+      "SELECT featured_image, status FROM posts WHERE id = ?",
+      [id]
+    );
+    if (oldPost.length === 0) {
+      if (uploadedFiles) {
+        if (uploadedFiles.featured_image)
+          deleteFile(
+            uploadedFiles.featured_image[0].path,
+            "post not found (featured)"
+          );
+        if (uploadedFiles.gallery_images)
+          deleteMultipleFiles(
+            uploadedFiles.gallery_images.map((f) => f.path),
+            "post not found (gallery)"
+          );
+      }
+      return res.status(404).json({ error: "Postingan tidak ditemukan." });
+    }
+    const oldFeaturedImagePath = oldPost[0].featured_image;
+    const oldStatus = oldPost[0].status;
+
+    if (title !== undefined) {
+      const [existingTitle] = await db.query(
+        "SELECT id FROM posts WHERE title = ? AND id != ?",
+        [title, id]
+      );
+      if (existingTitle.length > 0) {
+        if (uploadedFiles) {
+          if (uploadedFiles.featured_image)
+            deleteFile(
+              uploadedFiles.featured_image[0].path,
+              "duplicate title (featured)"
+            );
+          if (uploadedFiles.gallery_images)
+            deleteMultipleFiles(
+              uploadedFiles.gallery_images.map((f) => f.path),
+              "duplicate title (gallery)"
+            );
+        }
+        return res
+          .status(409)
+          .json({ error: "Postingan dengan judul ini sudah ada." });
+      }
+      updateFields.push("title = ?");
+      updateValues.push(title);
+    }
+
+    if (newSlug !== undefined) {
+      const [existingSlug] = await db.query(
+        "SELECT id FROM posts WHERE slug = ? AND id != ?",
+        [newSlug, id]
+      );
+      if (existingSlug.length > 0) {
+        if (uploadedFiles) {
+          if (uploadedFiles.featured_image)
+            deleteFile(
+              uploadedFiles.featured_image[0].path,
+              "duplicate slug (featured)"
+            );
+          if (uploadedFiles.gallery_images)
+            deleteMultipleFiles(
+              uploadedFiles.gallery_images.map((f) => f.path),
+              "duplicate slug (gallery)"
+            );
+        }
+        return res
+          .status(409)
+          .json({ error: "Postingan dengan slug ini sudah ada." });
+      }
+      updateFields.push("slug = ?");
+      updateValues.push(newSlug || null);
+    } else if (title !== undefined) {
+      const generatedSlug = title
+        .toLowerCase()
+        .replace(/\s+/g, "-")
+        .replace(/[^a-z0-9-]/g, "");
+      let suffix = 1;
+      let uniqueGeneratedSlug = generatedSlug;
+      while (true) {
+        const [checkSlug] = await db.query(
+          "SELECT id FROM posts WHERE slug = ? AND id != ?",
+          [uniqueGeneratedSlug, id]
+        );
+        if (checkSlug.length === 0) {
+          break;
+        }
+        uniqueGeneratedSlug = `${generatedSlug}-${suffix}`;
+        suffix++;
+      }
+      updateFields.push("slug = ?");
+      updateValues.push(uniqueGeneratedSlug);
+    }
+
+    if (excerpt !== undefined) {
+        let finalExcerpt;
+        if (excerpt === null || excerpt === "") {
+            const contentToUse = content || oldPost[0].content;
+            finalExcerpt = contentToUse
+                ? contentToUse.substring(0, 150) + (contentToUse.length > 150 ? "..." : "")
+                : null;
+        } else {
+            finalExcerpt = excerpt;
         }
 
-        let categories = req.body.categories;
-        let tags = req.body.tags;
+        updateFields.push("excerpt = ?");
+        updateValues.push(finalExcerpt);
+    }
+    if (content !== undefined) {
+      updateFields.push("content = ?");
+      updateValues.push(content);
+    }
+    if (author_id !== undefined) {
+      updateFields.push("author_id = ?");
+      updateValues.push(author_id);
+    }
+    if (category_id !== undefined) {
+      updateFields.push("category_id = ?");
+      updateValues.push(category_id || null);
+    }
 
-        if (categories === undefined) {
-            categories = [];
-        } else if (!Array.isArray(categories)) {
-            categories = [categories];
-        }
-        if (tags === undefined) {
-            tags = [];
-        } else if (!Array.isArray(tags)) {
-            tags = [tags];
-        }
+    if (meta_title !== undefined) {
+      updateFields.push("meta_title = ?");
+      updateValues.push(meta_title === "" ? null : meta_title);
+    }
+    if (meta_description !== undefined) {
+      updateFields.push("meta_description = ?");
+      updateValues.push(meta_description === "" ? null : meta_description);
+    }
 
-        const uploadedFiles = req.files;
+    let calculatedPublishedAt = null;
+    if (
+      status !== undefined &&
+      ["draft", "published", "archived"].includes(status)
+    ) {
+      updateFields.push("status = ?");
+      updateValues.push(status);
+      if (status === "published" && oldStatus !== "published") {
+        calculatedPublishedAt = new Date();
+      }
+    }
 
-        let newFeaturedImagePath = undefined;
-        if (uploadedFiles && uploadedFiles.featured_image) {
-            newFeaturedImagePath = `/uploads/posts/${uploadedFiles.featured_image[0].filename}`;
-        }
+    if (published_at !== undefined) {
+      calculatedPublishedAt = published_at ? new Date(published_at) : null;
+    }
 
-        let updateFields = [];
-        let updateValues = [];
-        let responseBody = {};
+    if (
+      calculatedPublishedAt !== null ||
+      (published_at !== undefined && published_at === null)
+    ) {
+      updateFields.push("published_at = ?");
+      updateValues.push(calculatedPublishedAt);
+    }
 
-        const [oldPost] = await db.query(
-            "SELECT featured_image, status FROM posts WHERE id = ?",
-            [id]
-        );
-        if (oldPost.length === 0) {
-            if (uploadedFiles) {
-                if (uploadedFiles.featured_image)
-                    deleteFile(
-                        uploadedFiles.featured_image[0].path,
-                        "post not found (featured)"
-                    );
-                if (uploadedFiles.gallery_images)
-                    deleteMultipleFiles(
-                        uploadedFiles.gallery_images.map((f) => f.path),
-                        "post not found (gallery)"
-                    );
-            }
-            return res.status(404).json({ error: "Postingan tidak ditemukan." });
-        }
-        const oldFeaturedImagePath = oldPost[0].featured_image;
-        const oldStatus = oldPost[0].status;
+    if (newFeaturedImagePath !== undefined) {
+      updateFields.push("featured_image = ?");
+      updateValues.push(newFeaturedImagePath);
+      if (
+        oldFeaturedImagePath &&
+        oldFeaturedImagePath.startsWith("/uploads/posts/")
+      ) {
+        deleteFile(oldFeaturedImagePath, "old featured image replaced");
+      }
+    } else if (clear_featured_image === "true") {
+      updateFields.push("featured_image = ?");
+      updateValues.push(null);
+      responseBody.image_cleared = true;
+      if (
+        oldFeaturedImagePath &&
+        oldFeaturedImagePath.startsWith("/uploads/posts/")
+      ) {
+        deleteFile(oldFeaturedImagePath, "clear featured image");
+      }
+    }
 
-        if (title !== undefined) {
-            const [existingTitle] = await db.query(
-                "SELECT id FROM posts WHERE title = ? AND id != ?",
-                [title, id]
-            );
-            if (existingTitle.length > 0) {
-                if (uploadedFiles) {
-                    if (uploadedFiles.featured_image)
-                        deleteFile(
-                            uploadedFiles.featured_image[0].path,
-                            "duplicate title (featured)"
-                        );
-                    if (uploadedFiles.gallery_images)
-                        deleteMultipleFiles(
-                            uploadedFiles.gallery_images.map((f) => f.path),
-                            "duplicate title (gallery)"
-                        );
-                }
-                return res
-                    .status(409)
-                    .json({ error: "Postingan dengan judul ini sudah ada." });
-            }
-            updateFields.push("title = ?");
-            updateValues.push(title);
-        }
+    updateFields.push("updated_at = NOW()");
 
-        if (newSlug !== undefined) {
-            const [existingSlug] = await db.query(
-                "SELECT id FROM posts WHERE slug = ? AND id != ?",
-                [newSlug, id]
-            );
-            if (existingSlug.length > 0) {
-                if (uploadedFiles) {
-                    if (uploadedFiles.featured_image)
-                        deleteFile(
-                            uploadedFiles.featured_image[0].path,
-                            "duplicate slug (featured)"
-                        );
-                    if (uploadedFiles.gallery_images)
-                        deleteMultipleFiles(
-                            uploadedFiles.gallery_images.map((f) => f.path),
-                            "duplicate slug (gallery)"
-                        );
-                }
-                return res
-                    .status(409)
-                    .json({ error: "Postingan dengan slug ini sudah ada." });
-            }
-            updateFields.push("slug = ?");
-            updateValues.push(newSlug || null);
-        } else if (title !== undefined) {
-            const generatedSlug = title
-                .toLowerCase()
-                .replace(/\s+/g, "-")
-                .replace(/[^a-z0-9-]/g, "");
-            let suffix = 1;
-            let uniqueGeneratedSlug = generatedSlug;
-            while (true) {
-                const [checkSlug] = await db.query(
-                    "SELECT id FROM posts WHERE slug = ? AND id != ?",
-                    [uniqueGeneratedSlug, id]
-                );
-                if (checkSlug.length === 0) {
-                    break;
-                }
-                uniqueGeneratedSlug = `${generatedSlug}-${suffix}`;
-                suffix++;
-            }
-            updateFields.push("slug = ?");
-            updateValues.push(uniqueGeneratedSlug);
-        }
+    if (
+      updateFields.length === 0 &&
+      tags === undefined &&
+      (!uploadedFiles ||
+        (!uploadedFiles.gallery_images && !uploadedFiles.featured_image)) &&
+      clear_gallery_images === undefined &&
+      delete_gallery_image_ids === undefined &&
+      clear_featured_image === undefined
+    ) {
+      if (uploadedFiles) {
+        if (uploadedFiles.featured_image)
+          deleteFile(
+            uploadedFiles.featured_image[0].path,
+            "no data to update (featured)"
+          );
+        if (uploadedFiles.gallery_images)
+          deleteMultipleFiles(
+            uploadedFiles.gallery_images.map((f) => f.path),
+            "no data to update (gallery)"
+          );
+      }
+      return res
+        .status(400)
+        .json({ error: "Tidak ada data yang disediakan untuk diperbarui." });
+    }
 
-        if (excerpt !== undefined) {
-            updateFields.push("excerpt = ?");
-            updateValues.push(excerpt || null);
-        }
-        if (content !== undefined) {
-            updateFields.push("content = ?");
-            updateValues.push(content);
-        }
-        if (author_id !== undefined) {
-            updateFields.push("author_id = ?");
-            updateValues.push(author_id);
-        }
+    connection = await db.getConnection();
+    await connection.beginTransaction();
 
-        if (meta_title !== undefined) {
-            updateFields.push("meta_title = ?");
-            updateValues.push(meta_title === "" ? null : meta_title);
-        }
-        if (meta_description !== undefined) {
-            updateFields.push("meta_description = ?");
-            updateValues.push(meta_description === "" ? null : meta_description);
-        }
+    if (updateFields.length > 0) {
+      const query = `UPDATE posts SET ${updateFields.join(", ")} WHERE id = ?`;
+      updateValues.push(id);
+      await connection.query(query, updateValues);
+    }
 
-        let calculatedPublishedAt = null;
-        if (
-            status !== undefined &&
-            ["draft", "published", "archived"].includes(status)
-        ) {
-            updateFields.push("status = ?");
-            updateValues.push(status);
-            if (status === "published" && oldStatus !== "published") {
-                calculatedPublishedAt = new Date();
-            }
-        }
+    const newGalleryImagePaths = [];
+    if (
+      uploadedFiles &&
+      uploadedFiles.gallery_images &&
+      uploadedFiles.gallery_images.length > 0
+    ) {
+      const [lastOrderResult] = await connection.query(
+        "SELECT MAX(sort_order) AS max_order FROM post_gallery_images WHERE post_id = ?",
+        [id]
+      );
+      let nextSortOrder = (lastOrderResult[0].max_order || 0) + 1;
 
-        if (published_at !== undefined) {
-            calculatedPublishedAt = published_at ? new Date(published_at) : null;
-        }
+      const galleryValues = uploadedFiles.gallery_images.map((file) => {
+        const imagePath = `/uploads/posts/${file.filename}`;
+        newGalleryImagePaths.push(imagePath);
+        return [id, imagePath, null, nextSortOrder++];
+      });
+      await connection.query(
+        "INSERT INTO post_gallery_images (post_id, image_path, alt_text, sort_order) VALUES ?",
+        [galleryValues]
+      );
+    }
 
-        if (
-            calculatedPublishedAt !== null ||
-            (published_at !== undefined && published_at === null)
-        ) {
-            updateFields.push("published_at = ?");
-            updateValues.push(calculatedPublishedAt);
-        }
+    if (clear_gallery_images === "true") {
+      const [existingGalleryImages] = await connection.query(
+        "SELECT image_path FROM post_gallery_images WHERE post_id = ?",
+        [id]
+      );
+      if (existingGalleryImages.length > 0) {
+        const pathsToDelete = existingGalleryImages.map(
+          (img) => img.image_path
+        );
+        deleteMultipleFiles(pathsToDelete, "clear all gallery images");
+        await connection.query(
+          "DELETE FROM post_gallery_images WHERE post_id = ?",
+          [id]
+        );
+        responseBody.gallery_images_cleared = true;
+      }
+    }
 
-        if (newFeaturedImagePath !== undefined) {
-            updateFields.push("featured_image = ?");
-            updateValues.push(newFeaturedImagePath);
-            if (
-                oldFeaturedImagePath &&
-                oldFeaturedImagePath.startsWith("/uploads/posts/")
-            ) {
-                deleteFile(oldFeaturedImagePath, "old featured image replaced");
-            }
-        } else if (clear_featured_image === 'true') { 
-            updateFields.push("featured_image = ?");
-            updateValues.push(null);
-            responseBody.image_cleared = true;
-            if (
-                oldFeaturedImagePath &&
-                oldFeaturedImagePath.startsWith("/uploads/posts/")
-            ) {
-                deleteFile(oldFeaturedImagePath, "clear featured image");
-            }
-        }
+    if (
+      parsed_delete_gallery_image_ids &&
+      Array.isArray(parsed_delete_gallery_image_ids) &&
+      parsed_delete_gallery_image_ids.length > 0
+    ) {
+      const placeholders = parsed_delete_gallery_image_ids
+        .map(() => "?")
+        .join(",");
+      const [imagesToDelete] = await connection.query(
+        `SELECT image_path FROM post_gallery_images WHERE id IN (${placeholders}) AND post_id = ?`,
+        [...parsed_delete_gallery_image_ids, id]
+      );
+      if (imagesToDelete.length > 0) {
+        const pathsToDelete = imagesToDelete.map((img) => img.image_path);
+        deleteMultipleFiles(pathsToDelete, "delete specific gallery images");
+        await connection.query(
+          `DELETE FROM post_gallery_images WHERE id IN (${placeholders}) AND post_id = ?`,
+          [...parsed_delete_gallery_image_ids, id]
+        );
+        responseBody.deleted_gallery_image_ids =
+          parsed_delete_gallery_image_ids;
+      }
+    }
 
-        updateFields.push("updated_at = NOW()");
+    // Update post tags
+    if (tags !== undefined) {
+      await connection.query("DELETE FROM post_tags WHERE post_id = ?", [id]);
+      if (tags.length > 0) {
+        const tagValues = tags.map((tagId) => [id, parseInt(tagId)]);
+        await connection.query(
+          "INSERT IGNORE INTO post_tags (post_id, tag_id) VALUES ?",
+          [tagValues]
+        );
+      }
+    }
 
-        if (
-            updateFields.length === 0 &&
-            categories === undefined &&
-            tags === undefined &&
-            (!uploadedFiles ||
-                (!uploadedFiles.gallery_images && !uploadedFiles.featured_image)) &&
-            clear_gallery_images === undefined &&
-            delete_gallery_image_ids === undefined &&
-            clear_featured_image === undefined
-        ) {
-            if (uploadedFiles) {
-                if (uploadedFiles.featured_image)
-                    deleteFile(
-                        uploadedFiles.featured_image[0].path,
-                        "no data to update (featured)"
-                    );
-                if (uploadedFiles.gallery_images)
-                    deleteMultipleFiles(
-                        uploadedFiles.gallery_images.map((f) => f.path),
-                        "no data to update (gallery)"
-                    );
-            }
-            return res
-                .status(400)
-                .json({ error: "Tidak ada data yang disediakan untuk diperbarui." });
-        }
+    await connection.commit();
 
-        connection = await db.getConnection();
-        await connection.beginTransaction();
+    res.status(200).json({
+      message: "Postingan berhasil diperbarui",
+      new_featured_image_path: newFeaturedImagePath,
+      new_gallery_image_paths: newGalleryImagePaths,
+      tags: tags.map((id) => parseInt(id)),
+      ...responseBody,
+    });
+  } catch (error) {
+    console.error("Error updating post:", error);
+    if (connection) await connection.rollback();
+    if (req.files) {
+      if (req.files.featured_image)
+        deleteFile(req.files.featured_image[0].path, "DB failure (featured)");
+      if (req.files.gallery_images)
+        deleteMultipleFiles(
+          req.files.gallery_images.map((f) => f.path),
+          "DB failure (gallery)"
+        );
+    }
 
-        if (updateFields.length > 0) {
-            const query = `UPDATE posts SET ${updateFields.join(", ")} WHERE id = ?`;
-            updateValues.push(id);
-            await connection.query(query, updateValues);
-        }
-
-        const newGalleryImagePaths = [];
-        if (
-            uploadedFiles &&
-            uploadedFiles.gallery_images &&
-            uploadedFiles.gallery_images.length > 0
-        ) {
-            const [lastOrderResult] = await connection.query(
-                "SELECT MAX(sort_order) AS max_order FROM post_gallery_images WHERE post_id = ?",
-                [id]
-            );
-            let nextSortOrder = (lastOrderResult[0].max_order || 0) + 1;
-
-            const galleryValues = uploadedFiles.gallery_images.map((file) => {
-                const imagePath = `/uploads/posts/${file.filename}`;
-                newGalleryImagePaths.push(imagePath);
-                return [id, imagePath, null, nextSortOrder++];
-            });
-            await connection.query(
-                "INSERT INTO post_gallery_images (post_id, image_path, alt_text, sort_order) VALUES ?",
-                [galleryValues]
-            );
-        }
-        
-        if (clear_gallery_images === 'true') { 
-            const [existingGalleryImages] = await connection.query(
-                "SELECT image_path FROM post_gallery_images WHERE post_id = ?",
-                [id]
-            );
-            if (existingGalleryImages.length > 0) {
-                const pathsToDelete = existingGalleryImages.map(
-                    (img) => img.image_path
-                );
-                deleteMultipleFiles(pathsToDelete, "clear all gallery images");
-                await connection.query(
-                    "DELETE FROM post_gallery_images WHERE post_id = ?",
-                    [id]
-                );
-                responseBody.gallery_images_cleared = true;
-            }
-        }
-
-        if (
-            parsed_delete_gallery_image_ids &&
-            Array.isArray(parsed_delete_gallery_image_ids) &&
-            parsed_delete_gallery_image_ids.length > 0
-        ) {
-            const placeholders = parsed_delete_gallery_image_ids.map(() => "?").join(",");
-            const [imagesToDelete] = await connection.query(
-                `SELECT image_path FROM post_gallery_images WHERE id IN (${placeholders}) AND post_id = ?`,
-                [...parsed_delete_gallery_image_ids, id]
-            );
-            if (imagesToDelete.length > 0) {
-                const pathsToDelete = imagesToDelete.map((img) => img.image_path);
-                deleteMultipleFiles(pathsToDelete, "delete specific gallery images");
-                await connection.query(
-                    `DELETE FROM post_gallery_images WHERE id IN (${placeholders}) AND post_id = ?`,
-                    [...parsed_delete_gallery_image_ids, id]
-                );
-                responseBody.deleted_gallery_image_ids = parsed_delete_gallery_image_ids;
-            }
-        }
-
-        if (categories !== undefined) {
-            await connection.query("DELETE FROM post_categories WHERE post_id = ?", [
-                id,
-            ]);
-            if (categories.length > 0) {
-                const categoryValues = categories.map((catId) => [id, parseInt(catId)]);
-                await connection.query(
-                    "INSERT IGNORE INTO post_categories (post_id, category_id) VALUES ?",
-                    [categoryValues]
-                );
-            }
-        }
-
-        // Update post tags
-        if (tags !== undefined) {
-            await connection.query("DELETE FROM post_tags WHERE post_id = ?", [id]);
-            if (tags.length > 0) {
-                const tagValues = tags.map((tagId) => [id, parseInt(tagId)]);
-                await connection.query(
-                    "INSERT IGNORE INTO post_tags (post_id, tag_id) VALUES ?",
-                    [tagValues]
-                );
-            }
-        }
-
-        await connection.commit();
-
-        res.status(200).json({
-            message: "Postingan berhasil diperbarui",
-            new_featured_image_path: newFeaturedImagePath,
-            new_gallery_image_paths: newGalleryImagePaths,
-            categories: categories.map((id) => parseInt(id)),
-            tags: tags.map((id) => parseInt(id)),
-            ...responseBody,
-        });
-    } catch (error) {
-        console.error("Error updating post:", error);
-        if (connection) await connection.rollback();
-        if (req.files) {
-            if (req.files.featured_image)
-                deleteFile(req.files.featured_image[0].path, "DB failure (featured)");
-            if (req.files.gallery_images)
-                deleteMultipleFiles(
-                    req.files.gallery_images.map((f) => f.path),
-                    "DB failure (gallery)"
-                );
-        }
-
-        if (error.code === "ER_DUP_ENTRY") {
-            res.status(409).json({
-                error:
-                    "Terjadi duplikasi entri. Judul atau slug postingan mungkin sudah terdaftar.",
-                details: error.message,
-            });
-        } else if (error.code === "ER_NO_REFERENCED_ROW_2") {
-            res.status(400).json({
-                error: "ID penulis, kategori, atau tag tidak valid.",
-                details: error.message,
-            });
-        } else {
-            res
-                .status(500)
-                .json({ error: "Gagal memperbarui postingan", details: error.message });
-        }
-    } finally {
-        if (connection) connection.release();
-    }
+    if (error.code === "ER_DUP_ENTRY") {
+      res.status(409).json({
+        error:
+          "Terjadi duplikasi entri. Judul atau slug postingan mungkin sudah terdaftar.",
+        details: error.message,
+      });
+    } else if (error.code === "ER_NO_REFERENCED_ROW_2") {
+      res.status(400).json({
+        error: "ID penulis, kategori, atau tag tidak valid.",
+        details: error.message,
+      });
+    } else {
+      res
+        .status(500)
+        .json({ error: "Gagal memperbarui postingan", details: error.message });
+    }
+  } finally {
+    if (connection) connection.release();
+  }
 };
 
 exports.getPosts = async (req, res) => {
@@ -651,43 +639,43 @@ exports.getPosts = async (req, res) => {
       pageSize = 10,
     } = req.query;
 
-    const sortKey = req.query['sort[key]'];
-    const sortOrder = req.query['sort[order]'];
+    const sortKey = req.query["sort[key]"];
+    const sortOrder = req.query["sort[order]"];
 
     const offset = (parseInt(pageIndex) - 1) * parseInt(pageSize);
     const parsedPageSize = parseInt(pageSize);
 
     let query = `
       SELECT
-          p.id, p.title, p.slug, p.excerpt, p.content, p.featured_image,
-          p.meta_title, p.meta_description, p.author_id, p.status, p.published_at,
-          p.created_at, p.updated_at,
-          u.name AS author_name,
-          u.foto AS author_photo,
-          GROUP_CONCAT(DISTINCT c.id, ':', c.name, ':', c.slug ORDER BY c.name SEPARATOR ';') AS categories_info,
-          GROUP_CONCAT(DISTINCT t.id, ':', t.name, ':', t.slug ORDER BY t.name SEPARATOR ';') AS tags_info,
-          GROUP_CONCAT(DISTINCT pgi.id, ':', pgi.image_path, ':', IFNULL(pgi.alt_text, '') ORDER BY pgi.sort_order SEPARATOR ';') AS gallery_images_info
+        p.id, p.title, p.slug, p.excerpt, p.content, p.featured_image,
+        p.meta_title, p.meta_description, p.author_id, p.category_id, p.status, p.published_at,
+        p.created_at, p.updated_at,
+        u.name AS author_name,
+        u.foto AS author_photo,
+        c.name AS category_name,
+        c.slug AS category_slug,
+        GROUP_CONCAT(DISTINCT t.id, ':', t.name, ':', t.slug ORDER BY t.name SEPARATOR ';') AS tags_info,
+        GROUP_CONCAT(DISTINCT pgi.id, ':', pgi.image_path, ':', IFNULL(pgi.alt_text, '') ORDER BY pgi.sort_order SEPARATOR ';') AS gallery_images_info,
+        (SELECT COUNT(*) FROM comments WHERE post_id = p.id AND status = 'approved') AS comment_count
       FROM
-          posts p
+        posts p
       LEFT JOIN
-          users u ON p.author_id = u.id
+        users u ON p.author_id = u.id
       LEFT JOIN
-          post_categories pc ON p.id = pc.post_id
+        categories c ON p.category_id = c.id
       LEFT JOIN
-          categories c ON pc.category_id = c.id
+        post_tags pt ON p.id = pt.post_id
       LEFT JOIN
-          post_tags pt ON p.id = pt.post_id
+        tags t ON pt.tag_id = t.id
       LEFT JOIN
-          tags t ON pt.tag_id = t.id
-      LEFT JOIN
-          post_gallery_images pgi ON p.id = pgi.post_id
+        post_gallery_images pgi ON p.id = pgi.post_id
     `;
 
     const queryParams = [];
     const conditions = [];
 
     if (categoryId) {
-      conditions.push(`pc.category_id = ?`);
+      conditions.push(`p.category_id = ?`);
       queryParams.push(categoryId);
     }
     if (tagId) {
@@ -722,27 +710,28 @@ exports.getPosts = async (req, res) => {
       "published_at",
       "status",
       "author_id",
+      "category_id",
     ];
     let orderBySql = "p.published_at DESC, p.created_at DESC";
 
     if (sortKey && sortOrder) {
-      let finalSortBy = allowedSortKeys.includes(sortKey)
-        ? `p.${sortKey}`
-        : "p.created_at";
-      if (sortKey === "author_name") {
-        finalSortBy = "u.name";
-      }
-      const finalOrder =
-        sortOrder.toUpperCase() === "ASC" ||
-        sortOrder.toUpperCase() === "DESC"
-          ? sortOrder.toUpperCase()
-          : "DESC";
-      orderBySql = `${finalSortBy} ${finalOrder}`;
-    }
+      let finalSortBy = allowedSortKeys.includes(sortKey)
+        ? `p.${sortKey}`
+        : "p.created_at";
+      if (sortKey === "author_name") {
+        finalSortBy = "u.name";
+      }
+      const finalOrder =
+        sortOrder.toUpperCase() === "ASC" ||
+        sortOrder.toUpperCase() === "DESC"
+          ? sortOrder.toUpperCase()
+          : "DESC";
+      orderBySql = `${finalSortBy} ${finalOrder}`;
+    }
 
     query += ` GROUP BY p.id ORDER BY ${orderBySql}`;
 
-    let countQuery = `SELECT COUNT(DISTINCT p.id) AS total FROM posts p LEFT JOIN post_categories pc ON p.id = pc.post_id LEFT JOIN post_tags pt ON p.id = pt.post_id LEFT JOIN users u ON p.author_id = u.id`;
+    let countQuery = `SELECT COUNT(DISTINCT p.id) AS total FROM posts p LEFT JOIN post_tags pt ON p.id = pt.post_id LEFT JOIN users u ON p.author_id = u.id`;
     if (conditions.length > 0) {
       countQuery += ` WHERE ` + conditions.join(` AND `);
     }
@@ -759,15 +748,14 @@ exports.getPosts = async (req, res) => {
     const totalItems = totalResults[0].total;
 
     const processedPosts = posts.map((post) => {
-      const categories = post.categories_info
-        ? post.categories_info
-            .split(";")
-            .map((cat) => {
-              const [id, name, slug] = cat.split(":");
-              return { id: parseInt(id), name, slug };
-            })
-            .filter((cat) => cat.id)
-        : [];
+      // Create a single category object
+      const category = post.category_id
+        ? {
+            id: post.category_id,
+            name: post.category_name,
+            slug: post.category_slug,
+          }
+        : null;
 
       const tags = post.tags_info
         ? post.tags_info
@@ -793,19 +781,21 @@ exports.getPosts = async (req, res) => {
             .filter((img) => img.id)
         : [];
 
-      delete post.categories_info;
+      // Remove old fields from the response
+      delete post.category_name;
+      delete post.category_slug;
       delete post.tags_info;
       delete post.gallery_images_info;
 
-      return { ...post, categories, tags, gallery_images };
+      return { ...post, category, tags, gallery_images };
     });
 
     res.status(200).json({
-      data: processedPosts,
-      total: totalItems,
-      pageIndex: parseInt(pageIndex),
-      pageSize: parsedPageSize,
-    });
+      data: processedPosts,
+      total: totalItems,
+      pageIndex: parseInt(pageIndex),
+      pageSize: parsedPageSize,
+    });
   } catch (error) {
     console.error("Error fetching posts:", error);
     res.status(500).json({
@@ -820,28 +810,27 @@ exports.getPostById = async (req, res) => {
     const { id } = req.params;
     const query = `
       SELECT
-          p.id, p.title, p.slug, p.excerpt, p.content, p.featured_image,
-          p.meta_title, p.meta_description, p.author_id, p.status, p.published_at,
-          p.created_at, p.updated_at,
-          u.name AS author_name,
-          u.foto AS author_photo,
-          GROUP_CONCAT(DISTINCT c.id, ':', c.name, ':', c.slug ORDER BY c.name SEPARATOR ';') AS categories_info,
-          GROUP_CONCAT(DISTINCT t.id, ':', t.name, ':', t.slug ORDER BY t.name SEPARATOR ';') AS tags_info,
-          GROUP_CONCAT(DISTINCT pgi.id, ':', pgi.image_path, ':', IFNULL(pgi.alt_text, '') ORDER BY pgi.sort_order SEPARATOR ';') AS gallery_images_info
+        p.id, p.title, p.slug, p.excerpt, p.content, p.featured_image,
+        p.meta_title, p.meta_description, p.author_id, p.category_id, p.status, p.published_at,
+        p.created_at, p.updated_at,
+        u.name AS author_name,
+        u.foto AS author_photo,
+        c.name AS category_name,
+        c.slug AS category_slug,
+        GROUP_CONCAT(DISTINCT t.id, ':', t.name, ':', t.slug ORDER BY t.name SEPARATOR ';') AS tags_info,
+        GROUP_CONCAT(DISTINCT pgi.id, ':', pgi.image_path, ':', IFNULL(pgi.alt_text, '') ORDER BY pgi.sort_order SEPARATOR ';') AS gallery_images_info
       FROM
-          posts p
+        posts p
       LEFT JOIN
-          users u ON p.author_id = u.id
+        users u ON p.author_id = u.id
       LEFT JOIN
-          post_categories pc ON p.id = pc.post_id
+        categories c ON p.category_id = c.id
       LEFT JOIN
-          categories c ON pc.category_id = c.id
+        post_tags pt ON p.id = pt.post_id
       LEFT JOIN
-          post_tags pt ON p.id = pt.post_id
+        tags t ON pt.tag_id = t.id
       LEFT JOIN
-          tags t ON pt.tag_id = t.id
-      LEFT JOIN
-          post_gallery_images pgi ON p.id = pgi.post_id
+        post_gallery_images pgi ON p.id = pgi.post_id
       WHERE p.id = ?
       GROUP BY p.id
     `;
@@ -852,15 +841,13 @@ exports.getPostById = async (req, res) => {
     }
 
     const post = posts[0];
-    const categories = post.categories_info
-      ? post.categories_info
-          .split(";")
-          .map((cat) => {
-            const [catId, name, slug] = cat.split(":");
-            return { id: parseInt(catId), name, slug };
-          })
-          .filter((cat) => cat.id)
-      : [];
+    const category = post.category_id
+      ? {
+          id: post.category_id,
+          name: post.category_name,
+          slug: post.category_slug,
+        }
+      : null;
 
     const tags = post.tags_info
       ? post.tags_info
@@ -886,11 +873,13 @@ exports.getPostById = async (req, res) => {
           .filter((img) => img.id)
       : [];
 
-    delete post.categories_info;
+    // Remove old fields from the response
+    delete post.category_name;
+    delete post.category_slug;
     delete post.tags_info;
     delete post.gallery_images_info;
 
-    res.status(200).json({ ...post, categories, tags, gallery_images });
+    res.status(200).json({ ...post, category, tags, gallery_images });
   } catch (error) {
     console.error("Error fetching post by ID:", error);
     res
@@ -902,31 +891,29 @@ exports.getPostById = async (req, res) => {
 exports.getPostBySlug = async (req, res) => {
   try {
     const { slug } = req.params;
-
     const query = `
       SELECT
-          p.id, p.title, p.slug, p.excerpt, p.content, p.featured_image,
-          p.meta_title, p.meta_description, p.author_id, p.status, p.published_at,
-          p.created_at, p.updated_at,
-          u.name AS author_name,
-          u.foto AS author_photo,
-          GROUP_CONCAT(DISTINCT c.id, ':', c.name, ':', c.slug ORDER BY c.name SEPARATOR ';') AS categories_info,
-          GROUP_CONCAT(DISTINCT t.id, ':', t.name, ':', t.slug ORDER BY t.name SEPARATOR ';') AS tags_info,
-          GROUP_CONCAT(DISTINCT pgi.id, ':', pgi.image_path, ':', IFNULL(pgi.alt_text, '') ORDER BY pgi.sort_order SEPARATOR ';') AS gallery_images_info
+        p.id, p.title, p.slug, p.excerpt, p.content, p.featured_image,
+        p.meta_title, p.meta_description, p.author_id, p.category_id, p.status, p.published_at,
+        p.created_at, p.updated_at,
+        u.name AS author_name,
+        u.foto AS author_photo,
+        c.name AS category_name,
+        c.slug AS category_slug,
+        GROUP_CONCAT(DISTINCT t.id, ':', t.name, ':', t.slug ORDER BY t.name SEPARATOR ';') AS tags_info,
+        GROUP_CONCAT(DISTINCT pgi.id, ':', pgi.image_path, ':', IFNULL(pgi.alt_text, '') ORDER BY pgi.sort_order SEPARATOR ';') AS gallery_images_info
       FROM
-          posts p
+        posts p
       LEFT JOIN
-          users u ON p.author_id = u.id
+        users u ON p.author_id = u.id
       LEFT JOIN
-          post_categories pc ON p.id = pc.post_id
+        categories c ON p.category_id = c.id
       LEFT JOIN
-          categories c ON pc.category_id = c.id
+        post_tags pt ON p.id = pt.post_id
       LEFT JOIN
-          post_tags pt ON p.id = pt.post_id
+        tags t ON pt.tag_id = t.id
       LEFT JOIN
-          tags t ON pt.tag_id = t.id
-      LEFT JOIN
-          post_gallery_images pgi ON p.id = pgi.post_id
+        post_gallery_images pgi ON p.id = pgi.post_id
       WHERE p.slug = ?
       GROUP BY p.id
     `;
@@ -939,15 +926,13 @@ exports.getPostBySlug = async (req, res) => {
 
     const post = posts[0];
 
-    const categories = post.categories_info
-      ? post.categories_info
-          .split(";")
-          .map((cat) => {
-            const [catId, name, slug] = cat.split(":");
-            return { id: parseInt(catId), name, slug };
-          })
-          .filter((cat) => cat.id)
-      : [];
+    const category = post.category_id
+      ? {
+          id: post.category_id,
+          name: post.category_name,
+          slug: post.category_slug,
+        }
+      : null;
 
     const tags = post.tags_info
       ? post.tags_info
@@ -958,7 +943,6 @@ exports.getPostBySlug = async (req, res) => {
           })
           .filter((tag) => tag.id)
       : [];
-
     const gallery_images = post.gallery_images_info
       ? post.gallery_images_info
           .split(";")
@@ -972,17 +956,135 @@ exports.getPostBySlug = async (req, res) => {
           })
           .filter((img) => img.id)
       : [];
-
-    delete post.categories_info;
+    delete post.category_name;
+    delete post.category_slug;
     delete post.tags_info;
     delete post.gallery_images_info;
-
-    res.status(200).json({ ...post, categories, tags, gallery_images });
+    res.status(200).json({ ...post, category, tags, gallery_images });
   } catch (error) {
     console.error("Error fetching post by slug:", error);
-    res
-      .status(500)
-      .json({ error: "Gagal mengambil postingan", details: error.message });
+    res.status(500).json({
+      error: "Gagal mengambil postingan",
+      details: error.message,
+    });
+  }
+};
+
+exports.getPostByCategory = async (req, res) => {
+  try {
+    const { slug } = req.params;
+    const { pageIndex = 1, pageSize = 10 } = req.query;
+    const offset = (parseInt(pageIndex) - 1) * parseInt(pageSize);
+    const parsedPageSize = parseInt(pageSize);
+
+    // Cari ID kategori berdasarkan slug
+    const [categoryResult] = await db.query(
+      "SELECT id FROM categories WHERE slug = ?",
+      [slug]
+    );
+
+    if (categoryResult.length === 0) {
+      return res.status(404).json({ error: "Kategori tidak ditemukan." });
+    }
+
+    const categoryId = categoryResult[0].id;
+
+    // Lanjutkan dengan query untuk mengambil postingan
+    let query = `
+      SELECT
+        p.id, p.title, p.slug, p.excerpt, p.content, p.featured_image,
+        p.meta_title, p.meta_description, p.author_id, p.category_id, p.status, p.published_at,
+        p.created_at, p.updated_at,
+        u.name AS author_name,
+        u.foto AS author_photo,
+        c.name AS category_name,
+        c.slug AS category_slug,
+        GROUP_CONCAT(DISTINCT t.id, ':', t.name, ':', t.slug ORDER BY t.name SEPARATOR ';') AS tags_info,
+        GROUP_CONCAT(DISTINCT pgi.id, ':', pgi.image_path, ':', IFNULL(pgi.alt_text, '') ORDER BY pgi.sort_order SEPARATOR ';') AS gallery_images_info,
+        (SELECT COUNT(*) FROM comments WHERE post_id = p.id AND status = 'approved') AS comment_count
+      FROM
+        posts p
+      LEFT JOIN
+        users u ON p.author_id = u.id
+      LEFT JOIN
+        categories c ON p.category_id = c.id
+      LEFT JOIN
+        post_tags pt ON p.id = pt.post_id
+      LEFT JOIN
+        tags t ON pt.tag_id = t.id
+      LEFT JOIN
+        post_gallery_images pgi ON p.id = pgi.post_id
+      WHERE p.category_id = ? AND p.status = 'published'
+      GROUP BY p.id
+      ORDER BY p.published_at DESC
+      LIMIT ? OFFSET ?
+    `;
+
+    const [posts] = await db.query(query, [
+      categoryId,
+      parsedPageSize,
+      offset,
+    ]);
+
+    const countQuery = `
+      SELECT COUNT(*) AS total
+      FROM posts
+      WHERE category_id = ? AND status = 'published'
+    `;
+    const [totalResult] = await db.query(countQuery, [categoryId]);
+    const totalItems = totalResult[0].total;
+
+    // Memproses data post... (kode yang sama seperti sebelumnya)
+    const processedPosts = posts.map((post) => {
+      const category = post.category_id
+        ? {
+            id: post.category_id,
+            name: post.category_name,
+            slug: post.category_slug,
+          }
+        : null;
+      const tags = post.tags_info
+        ? post.tags_info
+            .split(";")
+            .map((tag) => {
+              const [id, name, slug] = tag.split(":");
+              return { id: parseInt(id), name, slug };
+            })
+            .filter((tag) => tag.id)
+        : [];
+      const gallery_images = post.gallery_images_info
+        ? post.gallery_images_info
+            .split(";")
+            .map((img) => {
+              const [id, image_path, alt_text] = img.split(":");
+              return {
+                id: parseInt(id),
+                image_path,
+                alt_text: alt_text === "null" ? null : alt_text,
+              };
+            })
+            .filter((img) => img.id)
+        : [];
+      delete post.category_name;
+      delete post.category_slug;
+      delete post.tags_info;
+      delete post.gallery_images_info;
+
+      return { ...post, category, tags, gallery_images };
+    });
+
+    res.status(200).json({
+      data: processedPosts,
+      total: totalItems,
+      pageIndex: parseInt(pageIndex),
+      pageSize: parsedPageSize,
+    });
+  } catch (error) {
+    console.error("Error fetching posts by category slug:", error);
+    res.status(500).json({
+      error: "Gagal mengambil postingan berdasarkan slug kategori",
+      details: error.message,
+    });
   }
 };
 
@@ -990,7 +1092,6 @@ exports.deletePost = async (req, res) => {
   let connection;
   try {
     const { id } = req.params;
-
     connection = await db.getConnection();
     await connection.beginTransaction();
 
@@ -1000,7 +1101,6 @@ exports.deletePost = async (req, res) => {
     );
     const featuredImagePathToDelete =
       post.length > 0 ? post[0].featured_image : null;
-
     const [galleryImages] = await connection.query(
       "SELECT image_path FROM post_gallery_images WHERE post_id = ?",
       [id]
@@ -1008,35 +1108,34 @@ exports.deletePost = async (req, res) => {
     const galleryImagePathsToDelete = galleryImages.map(
       (img) => img.image_path
     );
-
     const [result] = await connection.query("DELETE FROM posts WHERE id = ?", [
       id,
     ]);
-
     await connection.commit();
 
-    if (result.affectedRows === 0) {
-      return res.status(404).json({ error: "Postingan tidak ditemukan" });
+    // After successful deletion from the database, delete files from the server
+    if (result.affectedRows > 0) {
+      if (featuredImagePathToDelete) {
+        deleteFile(featuredImagePathToDelete, "post deleted (featured)");
+      }
+      if (galleryImagePathsToDelete.length > 0) {
+        deleteMultipleFiles(
+          galleryImagePathsToDelete,
+          "post deleted (gallery)"
+        );
+      }
+      res.status(200).json({ message: "Postingan berhasil dihapus." });
+    } else {
+      await connection.rollback();
+      res.status(404).json({ error: "Postingan tidak ditemukan." });
     }
-
-    if (
-      featuredImagePathToDelete &&
-      featuredImagePathToDelete.startsWith("/uploads/posts/")
-    ) {
-      deleteFile(featuredImagePathToDelete, "post deletion (featured)");
-    }
-    deleteMultipleFiles(
-      galleryImagePathsToDelete,
-      "post deletion (gallery images)"
-    );
-
-    res.status(200).json({ message: "Postingan berhasil dihapus." });
   } catch (error) {
     console.error("Error deleting post:", error);
     if (connection) await connection.rollback();
-    res
-      .status(500)
-      .json({ error: "Gagal menghapus postingan", details: error.message });
+    res.status(500).json({
+      error: "Gagal menghapus postingan",
+      details: error.message,
+    });
   } finally {
     if (connection) connection.release();
   }

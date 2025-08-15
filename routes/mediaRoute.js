@@ -7,6 +7,7 @@ const { mediaUpload } = require('../validation/configMulter');
 
 router.post('/', mediaUpload, mediaController.createMediaCollection);
 router.get('/', mediaController.getMediaCollections);
+router.get('/category/:categoryId', mediaController.getMediaCollectionsByCategory);
 router.get('/id/:id', mediaController.getMediaCollectionById);
 router.put('/:id', mediaUpload, mediaController.updateMediaCollection);
 router.delete('/:id', mediaController.deleteMediaCollection); 
