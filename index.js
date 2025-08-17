@@ -20,6 +20,7 @@ const socialRoute = require("./routes/socialRoute");
 const uploadRoute = require("./routes/uploadRoute");
 const mediaRoute = require("./routes/mediaRoute");
 const tagRoute = require("./routes/tagRoute");
+const modulRoute = require("./routes/modulRoute");
 
 const generateCsrfToken = require("./middleware/csrfMiddleware");
 
@@ -72,6 +73,7 @@ app.use("/api/upload", uploadRoute);
 app.use("/api/media", mediaRoute);
 app.use("/api/media-categories", mediaCategoryRoute);
 app.use("/api/tags", tagRoute);
+app.use("/api/moduls", modulRoute);
 
 app.use((err, req, res, next) => {
   if (err.message === "CSRF token tidak valid atau tidak ada.") {
