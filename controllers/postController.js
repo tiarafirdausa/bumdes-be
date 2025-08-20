@@ -41,6 +41,23 @@ const deleteMultipleFiles = (filePaths, context) => {
   filePaths.forEach((filePath) => deleteFile(filePath, context));
 };
 
+const trackPostHit = async (postId) => {
+  try {
+    const [post] = await db.query(
+      "SELECT status FROM posts WHERE id = ?",
+      [postId]
+    );
+
+    if (post.length > 0 && post[0].status === "published") {
+      await db.query("UPDATE posts SET hits = hits + 1 WHERE id = ?", [
+        postId,
+      ]);
+    }
+  } catch (error) {
+    console.error("Gagal melacak hit postingan:", error);
+  }
+};
+
 exports.createPost = async (req, res) => {
   let connection;
   try {
@@ -649,7 +666,7 @@ exports.getPosts = async (req, res) => {
       SELECT
         p.id, p.title, p.slug, p.excerpt, p.content, p.featured_image,
         p.meta_title, p.meta_description, p.author_id, p.category_id, p.status, p.published_at,
-        p.created_at, p.updated_at,
+        p.created_at, p.updated_at, p.hits,
         u.name AS author_name,
         u.foto AS author_photo,
         c.name AS category_name,
@@ -711,6 +728,7 @@ exports.getPosts = async (req, res) => {
       "status",
       "author_id",
       "category_id",
+      "hits",
     ];
     let orderBySql = "p.published_at DESC, p.created_at DESC";
 
@@ -812,7 +830,7 @@ exports.getPostById = async (req, res) => {
       SELECT
         p.id, p.title, p.slug, p.excerpt, p.content, p.featured_image,
         p.meta_title, p.meta_description, p.author_id, p.category_id, p.status, p.published_at,
-        p.created_at, p.updated_at,
+        p.created_at, p.updated_at, p.hits,
         u.name AS author_name,
         u.foto AS author_photo,
         c.name AS category_name,
@@ -841,6 +859,10 @@ exports.getPostById = async (req, res) => {
     }
 
     const post = posts[0];
+    if (post.status === "published") {
+      await trackPostHit(post.id);
+    }
+
     const category = post.category_id
       ? {
           id: post.category_id,
@@ -895,7 +917,7 @@ exports.getPostBySlug = async (req, res) => {
       SELECT
         p.id, p.title, p.slug, p.excerpt, p.content, p.featured_image,
         p.meta_title, p.meta_description, p.author_id, p.category_id, p.status, p.published_at,
-        p.created_at, p.updated_at,
+        p.created_at, p.updated_at, p.hits,
         u.name AS author_name,
         u.foto AS author_photo,
         c.name AS category_name,
@@ -925,6 +947,9 @@ exports.getPostBySlug = async (req, res) => {
     }
 
     const post = posts[0];
+    if (post.status === "published") {
+      await trackPostHit(post.id);
+    }
 
     const category = post.category_id
       ? {
