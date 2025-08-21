@@ -58,6 +58,14 @@ const trackPostHit = async (postId) => {
   }
 };
 
+const stripHtmlAndTrim = (text, maxLength = 180) => {
+  if (!text) {
+    return null;
+  }
+  const cleanText = text.replace(/<[^>]*>?/gm, "");
+  return cleanText.substring(0, maxLength) + (cleanText.length > maxLength ? "..." : "");
+};
+
 exports.createPost = async (req, res) => {
   let connection;
   try {
@@ -70,7 +78,7 @@ exports.createPost = async (req, res) => {
       meta_description,
       status,
       published_at,
-      category_id, 
+      category_id,
     } = req.body;
 
     let tags = req.body.tags;
@@ -136,24 +144,16 @@ exports.createPost = async (req, res) => {
       slug = uniqueSlug;
     }
 
+    const finalExcerpt = stripHtmlAndTrim(excerpt || content);
+    const finalMetaDescription = stripHtmlAndTrim(meta_description || finalExcerpt);
     const finalMetaTitle =
       meta_title !== undefined && meta_title !== "" ? meta_title : title;
     
-    const finalExcerpt =
-      excerpt && excerpt.length > 0
-          ? excerpt
-          : content.substring(0, 150) + (content.length > 150 ? "..." : "");
-
-    const finalMetaDescription =
-        meta_description && meta_description.length > 0
-            ? meta_description
-            : finalExcerpt;
-
     const finalStatus = ["draft", "published", "archived"].includes(status)
       ? status
       : "draft";
     
-      const finalPublishedAt =
+    const finalPublishedAt =
       finalStatus === "published" && published_at
         ? new Date(published_at)
         : finalStatus === "published"
@@ -200,7 +200,7 @@ exports.createPost = async (req, res) => {
 
     // Insert post tags
     if (tags.length > 0) {
-      const tagValues = tags.map((tagId) => [postId, parseInt(tagId)]); // Pastikan tagId adalah integer
+      const tagValues = tags.map((tagId) => [postId, parseInt(tagId)]);
       await connection.query(
         "INSERT IGNORE INTO post_tags (post_id, tag_id) VALUES ?",
         [tagValues]
@@ -213,7 +213,7 @@ exports.createPost = async (req, res) => {
       id: postId,
       title,
       slug,
-      excerpt,
+      excerpt: finalExcerpt,
       content,
       featured_image: featured_image_path,
       gallery_images: galleryImagesPaths,
@@ -277,7 +277,7 @@ exports.updatePost = async (req, res) => {
       clear_featured_image,
       clear_gallery_images,
       delete_gallery_image_ids,
-      category_id, 
+      category_id,
     } = req.body;
 
     let parsed_delete_gallery_image_ids = [];
@@ -313,7 +313,7 @@ exports.updatePost = async (req, res) => {
     let responseBody = {};
 
     const [oldPost] = await db.query(
-      "SELECT featured_image, status FROM posts WHERE id = ?",
+      "SELECT featured_image, status, content FROM posts WHERE id = ?",
       [id]
     );
     if (oldPost.length === 0) {
@@ -333,6 +333,7 @@ exports.updatePost = async (req, res) => {
     }
     const oldFeaturedImagePath = oldPost[0].featured_image;
     const oldStatus = oldPost[0].status;
+    const oldContent = oldPost[0].content;
 
     if (title !== undefined) {
       const [existingTitle] = await db.query(
@@ -406,24 +407,28 @@ exports.updatePost = async (req, res) => {
       updateValues.push(uniqueGeneratedSlug);
     }
 
-    if (excerpt !== undefined) {
-        let finalExcerpt;
-        if (excerpt === null || excerpt === "") {
-            const contentToUse = content || oldPost[0].content;
-            finalExcerpt = contentToUse
-                ? contentToUse.substring(0, 150) + (contentToUse.length > 150 ? "..." : "")
-                : null;
-        } else {
-            finalExcerpt = excerpt;
-        }
-
-        updateFields.push("excerpt = ?");
-        updateValues.push(finalExcerpt);
-    }
     if (content !== undefined) {
       updateFields.push("content = ?");
       updateValues.push(content);
     }
+
+    // Always update excerpt and meta description if content changes, or if they are explicitly provided
+    if (content !== undefined || excerpt !== undefined) {
+      const contentToUse = content !== undefined ? content : oldContent;
+      const finalExcerpt = stripHtmlAndTrim(excerpt || contentToUse);
+      updateFields.push("excerpt = ?");
+      updateValues.push(finalExcerpt);
+
+      const finalMetaDescription = stripHtmlAndTrim(meta_description || finalExcerpt);
+      updateFields.push("meta_description = ?");
+      updateValues.push(finalMetaDescription);
+    } else if (meta_description !== undefined) {
+      // Handle meta_description update even if no content or excerpt change
+      const finalMetaDescription = stripHtmlAndTrim(meta_description);
+      updateFields.push("meta_description = ?");
+      updateValues.push(finalMetaDescription);
+    }
+    
     if (author_id !== undefined) {
       updateFields.push("author_id = ?");
       updateValues.push(author_id);
@@ -436,10 +441,6 @@ exports.updatePost = async (req, res) => {
     if (meta_title !== undefined) {
       updateFields.push("meta_title = ?");
       updateValues.push(meta_title === "" ? null : meta_title);
-    }
-    if (meta_description !== undefined) {
-      updateFields.push("meta_description = ?");
-      updateValues.push(meta_description === "" ? null : meta_description);
     }
 
     let calculatedPublishedAt = null;
