@@ -5,46 +5,48 @@ const path = require("path");
 const fs = require("fs");
 
 const deleteFile = (filePath, context) => {
-  if (
-    !filePath ||
-    typeof filePath !== "string" ||
-    !filePath.startsWith("/uploads/media/")
-  ) {
-    console.error(
-      `Invalid or suspicious file path for deletion (${context}):`,
-      filePath
-    );
-    return;
-  }
-
-  const fullPath = path.join(__dirname, "..", "..", "public", filePath);
-
-  if (fs.existsSync(fullPath)) {
-    fs.unlink(fullPath, (unlinkErr) => {
-      if (unlinkErr)
-        console.error(`Error deleting file (${context}):`, fullPath, unlinkErr);
-      else console.log(`File deleted (${context}):`, fullPath);
-    });
-  } else {
-    console.log(`File not found for deletion (${context}):`, fullPath);
-  }
+  if (
+    !filePath ||
+    typeof filePath !== "string" ||
+    !filePath.startsWith("/uploads/media/")
+  ) {
+    console.error(
+      `Invalid or suspicious file path for deletion (${context}):`,
+      filePath
+    );
+    return;
+  }
+  const fullPath = path.join(__dirname, "..", "..", "public", filePath);
+  if (fs.existsSync(fullPath)) {
+    fs.unlink(fullPath, (unlinkErr) => {
+      if (unlinkErr)
+        console.error(`Error deleting file (${context}):`, fullPath, unlinkErr);
+      else console.log(`File deleted (${context}):`, fullPath);
+    });
+  } else {
+    console.log(`File not found for deletion (${context}):`, fullPath);
+  }
 };
 
 const deleteMultipleFiles = (filePaths, context) => {
-  if (!filePaths || !Array.isArray(filePaths)) {
-    console.warn(
-      `Attempted to delete multiple files with invalid filePaths array (${context}).`
-    );
-    return;
-  }
-  filePaths.forEach((filePath) => deleteFile(filePath, context));
+  if (!filePaths || !Array.isArray(filePaths)) {
+    console.warn(
+      `Attempted to delete multiple files with invalid filePaths array (${context}).`
+    );
+    return;
+  }
+  filePaths.forEach((filePath) => deleteFile(filePath, context));
 };
 
 exports.createMediaCollection = async (req, res) => {
   let connection;
   try {
     const { title, caption, category_id, uploaded_by } = req.body;
-    const uploadedFiles = req.files;
+    const uploadedFiles = req.files.media;
+    const croppedFiles = req.files.media_cropped || [];
+
+    console.log("Uploaded Original Files:", uploadedFiles);
+    console.log("Uploaded Cropped Files:", croppedFiles);
 
     if (!uploadedFiles || uploadedFiles.length === 0) {
       return res
@@ -68,22 +70,23 @@ exports.createMediaCollection = async (req, res) => {
     );
     const mediaCollectionId = collectionResult.insertId;
 
-    const mediaValues = uploadedFiles.map((file, index) => [
-      mediaCollectionId,
-      `/uploads/media/${file.filename}`,
-      file.originalname,
-      index + 1,
-    ]);
+    for (let i = 0; i < uploadedFiles.length; i++) {
+        const file = uploadedFiles[i];
+        const croppedFile = croppedFiles[i] || null;
 
-    await connection.query(
-      "INSERT INTO media (media_collection_id, url, file_name, sort_order) VALUES ?",
-      [mediaValues]
-    );
+        const originalUrl = `/uploads/media/${file.filename}`;
+        const croppedUrl = croppedFile ? `/uploads/media/${croppedFile.filename}` : null;
+
+        await connection.query(
+            "INSERT INTO media (media_collection_id, url, cropped_url, file_name, sort_order) VALUES (?, ?, ?, ?, ?)",
+            [mediaCollectionId, originalUrl, croppedUrl, file.originalname, i + 1]
+        );
+    }
 
     await connection.commit();
 
     const [insertedFiles] = await db.query(
-      "SELECT id, file_name, url, sort_order FROM media WHERE media_collection_id = ? ORDER BY sort_order",
+      "SELECT id, file_name, url, cropped_url, sort_order FROM media WHERE media_collection_id = ? ORDER BY sort_order",
       [mediaCollectionId]
     );
 
@@ -100,10 +103,8 @@ exports.createMediaCollection = async (req, res) => {
     console.error("Error creating media collection:", error);
     if (connection) await connection.rollback();
     if (req.files) {
-      deleteMultipleFiles(
-        req.files.map((f) => f.path),
-        "createMediaCollection: DB error"
-      );
+      if (req.files.media) deleteMultipleFiles(req.files.media.map(f => f.path), "createMediaCollection: DB error (media)");
+      if (req.files.media_cropped) deleteMultipleFiles(req.files.media_cropped.map(f => f.path), "createMediaCollection: DB error (media_cropped)");
     }
     res
       .status(500)
@@ -115,20 +116,11 @@ exports.createMediaCollection = async (req, res) => {
 
 exports.getMediaCollections = async (req, res) => {
   try {
-    const {
-      pageIndex = 1,
-      pageSize = 10,
-      query: search = "",
-      categoryId,
-      authorId,
-    } = req.query;
-
+    const { pageIndex = 1, pageSize = 10, query: search = "", categoryId, authorId } = req.query;
     const sortKey = req.query["sort[key]"];
     const sortOrder = req.query["sort[order]"];
-
     const offset = (parseInt(pageIndex) - 1) * parseInt(pageSize);
     const parsedPageSize = parseInt(pageSize);
-
     let whereClauses = [];
     let queryParams = [];
 
@@ -149,9 +141,7 @@ exports.getMediaCollections = async (req, res) => {
       queryParams.push(parseInt(authorId));
     }
 
-    const whereSql =
-      whereClauses.length > 0 ? `WHERE ${whereClauses.join(" AND ")}` : "";
-
+    const whereSql = whereClauses.length > 0 ? `WHERE ${whereClauses.join(" AND ")}` : "";
     let orderByClause = "ORDER BY mc.created_at DESC";
     if (sortKey && sortOrder) {
       let finalSortBy; 
@@ -164,7 +154,6 @@ exports.getMediaCollections = async (req, res) => {
       ) {
         finalSortBy = `mc.${sortKey}`;
       }
-
       if (finalSortBy) {
         const finalOrder = sortOrder.toUpperCase() === "DESC" ? "DESC" : "ASC";
         orderByClause = `ORDER BY ${finalSortBy} ${finalOrder}`;
@@ -187,7 +176,7 @@ exports.getMediaCollections = async (req, res) => {
 
     if (collectionIds.length > 0) {
       const [mediaFiles] = await db.query(
-        `SELECT id, media_collection_id, url FROM media WHERE media_collection_id IN (?)`,
+        `SELECT id, media_collection_id, url, cropped_url FROM media WHERE media_collection_id IN (?)`,
         [collectionIds]
       );
       allMediaFiles = mediaFiles;
@@ -225,17 +214,8 @@ exports.getMediaCollections = async (req, res) => {
 exports.getMediaCollectionById = async (req, res) => {
   try {
     const { id } = req.params;
-
     const [collection] = await db.query(
-      `SELECT 
-          mc.id, mc.title, mc.caption, mc.created_at, mc.uploaded_by,
-          u.name AS uploaded_by_name,
-          mc_cat.name AS category_name,
-          mc_cat.id AS category_id
-        FROM media_collection mc
-        LEFT JOIN users u ON mc.uploaded_by = u.id
-        LEFT JOIN media_categories mc_cat ON mc.category_id = mc_cat.id
-        WHERE mc.id = ?`,
+      `SELECT mc.id, mc.title, mc.caption, mc.created_at, mc.uploaded_by, u.name AS uploaded_by_name, mc_cat.name AS category_name, mc_cat.id AS category_id FROM media_collection mc LEFT JOIN users u ON mc.uploaded_by = u.id LEFT JOIN media_categories mc_cat ON mc.category_id = mc_cat.id WHERE mc.id = ?`,
       [id]
     );
 
@@ -243,9 +223,8 @@ exports.getMediaCollectionById = async (req, res) => {
       return res.status(404).json({ error: "Koleksi media tidak ditemukan." });
     }
 
-    // Mengambil file dan mengurutkannya berdasarkan sort_order
     const [files] = await db.query(
-      "SELECT id, file_name, url, sort_order FROM media WHERE media_collection_id = ? ORDER BY sort_order",
+      "SELECT id, file_name, url, cropped_url, sort_order FROM media WHERE media_collection_id = ? ORDER BY sort_order",
       [id]
     );
 
@@ -268,25 +247,20 @@ exports.deleteMediaCollection = async (req, res) => {
   let connection;
   try {
     const { id } = req.params;
-
     connection = await db.getConnection();
     await connection.beginTransaction();
 
     const [filesToDelete] = await connection.query(
-      "SELECT url FROM media WHERE media_collection_id = ?",
+      "SELECT url, cropped_url FROM media WHERE media_collection_id = ?",
       [id]
     );
-    const filePathsToDelete = filesToDelete.map((f) => f.url);
+    const filePathsToDelete = filesToDelete.flatMap((f) => [f.url, f.cropped_url].filter(Boolean));
 
-    await connection.query("DELETE FROM media WHERE media_collection_id = ?", [
-      id,
-    ]);
-
+    await connection.query("DELETE FROM media WHERE media_collection_id = ?", [id]);
     const [result] = await connection.query(
       "DELETE FROM media_collection WHERE id = ?",
       [id]
     );
-
     await connection.commit();
 
     if (result.affectedRows === 0) {
@@ -319,7 +293,8 @@ exports.updateMediaCollection = async (req, res) => {
       delete_media_file_ids,
       updated_sort_order,
     } = req.body;
-    const uploadedFiles = req.files;
+    const uploadedFiles = req.files.media || [];
+    const croppedFiles = req.files.media_cropped || [];
 
     if (!id) {
       return res.status(400).json({ error: "ID koleksi media tidak valid." });
@@ -334,11 +309,9 @@ exports.updateMediaCollection = async (req, res) => {
     );
 
     if (oldCollection.length === 0) {
-      if (uploadedFiles && uploadedFiles.length > 0) {
-        deleteMultipleFiles(
-          uploadedFiles.map((f) => f.path),
-          "updateMediaCollection: collection not found"
-        );
+      if (req.files) {
+        if (req.files.media) deleteMultipleFiles(req.files.media.map(f => f.path), "updateMediaCollection: collection not found");
+        if (req.files.media_cropped) deleteMultipleFiles(req.files.media_cropped.map(f => f.path), "updateMediaCollection: collection not found");
       }
       return res.status(404).json({ error: "Koleksi media tidak ditemukan." });
     }
@@ -382,17 +355,15 @@ exports.updateMediaCollection = async (req, res) => {
 
     let deletedFileIds = [];
     if (delete_media_file_ids && delete_media_file_ids !== "[]") {
-      console.log("String JSON yang diterima:", delete_media_file_ids);
-
       const idsToDelete = JSON.parse(delete_media_file_ids).map(Number);
       if (idsToDelete.length > 0) {
         const placeholders = idsToDelete.map(() => "?").join(",");
         const [filesToDelete] = await connection.query(
-          `SELECT url FROM media WHERE id IN (${placeholders}) AND media_collection_id = ?`,
+          `SELECT url, cropped_url FROM media WHERE id IN (${placeholders}) AND media_collection_id = ?`,
           [...idsToDelete, id]
         );
         if (filesToDelete.length > 0) {
-          const filePathsToDelete = filesToDelete.map((file) => file.url);
+          const filePathsToDelete = filesToDelete.flatMap(file => [file.url, file.cropped_url].filter(Boolean));
           deleteMultipleFiles(
             filePathsToDelete,
             "updateMediaCollection: delete specific files"
@@ -413,20 +384,17 @@ exports.updateMediaCollection = async (req, res) => {
         let caseStatements = "";
         let caseValues = [];
         let idsToUpdate = [];
-
         sortOrderUpdates.forEach((item) => {
           caseStatements += `WHEN id = ? THEN ? `;
           caseValues.push(item.id, item.sort_order);
           idsToUpdate.push(item.id);
         });
-
         const placeholders = idsToUpdate.map(() => "?").join(",");
         const updateSortOrderQuery = `
-                UPDATE media
-                SET sort_order = CASE ${caseStatements} END
-                WHERE id IN (${placeholders}) AND media_collection_id = ?
-            `;
-
+            UPDATE media
+            SET sort_order = CASE ${caseStatements} END
+            WHERE id IN (${placeholders}) AND media_collection_id = ?
+        `;
         await connection.query(updateSortOrderQuery, [
           ...caseValues,
           ...idsToUpdate,
@@ -436,41 +404,39 @@ exports.updateMediaCollection = async (req, res) => {
     }
 
     let newFiles = [];
-    if (uploadedFiles && uploadedFiles.length > 0) {
+    if (uploadedFiles.length > 0) {
       const [maxSortOrderResult] = await connection.query(
         "SELECT COALESCE(MAX(sort_order), 0) AS max_order FROM media WHERE media_collection_id = ?",
         [id]
       );
       let nextSortOrder = maxSortOrderResult[0].max_order + 1;
-
-      const fileValues = uploadedFiles.map((file, index) => [
-        id,
-        `/uploads/media/${file.filename}`,
-        file.originalname,
-        nextSortOrder + index,
-      ]);
+      const fileValues = uploadedFiles.map((file, index) => {
+        const croppedFile = croppedFiles[index] || null;
+        const originalUrl = `/uploads/media/${file.filename}`;
+        const croppedUrl = croppedFile ? `/uploads/media/${croppedFile.filename}` : null;
+        return [id, originalUrl, croppedUrl, file.originalname, nextSortOrder + index];
+      });
 
       await connection.query(
-        "INSERT INTO media (media_collection_id, url, file_name, sort_order) VALUES ?",
+        "INSERT INTO media (media_collection_id, url, cropped_url, file_name, sort_order) VALUES ?",
         [fileValues]
       );
 
       const [insertedFiles] = await connection.query(
-        "SELECT id, file_name, url, sort_order FROM media WHERE media_collection_id = ? AND url IN (?)",
+        "SELECT id, file_name, url, cropped_url, sort_order FROM media WHERE media_collection_id = ? AND url IN (?)",
         [id, fileValues.map((v) => v[1])]
       );
       newFiles = insertedFiles;
     }
 
     await connection.commit();
-
     const [updatedCollection] = await db.query(
       `SELECT mc.id, mc.title, mc.caption, mc.created_at, mc.uploaded_by, mc.updated_at, u.name AS uploaded_by_name, mc_cat.name AS category_name, mc_cat.id AS category_id FROM media_collection mc LEFT JOIN users u ON mc.uploaded_by = u.id LEFT JOIN media_categories mc_cat ON mc.category_id = mc_cat.id WHERE mc.id = ?`,
       [id]
     );
 
     const [finalFiles] = await db.query(
-      "SELECT id, file_name, url, sort_order FROM media WHERE media_collection_id = ? ORDER BY sort_order",
+      "SELECT id, file_name, url, cropped_url, sort_order FROM media WHERE media_collection_id = ? ORDER BY sort_order",
       [id]
     );
 
@@ -485,10 +451,8 @@ exports.updateMediaCollection = async (req, res) => {
     console.error("Error updating media collection:", error);
     if (connection) await connection.rollback();
     if (req.files) {
-      deleteMultipleFiles(
-        req.files.map((f) => f.path),
-        "updateMediaCollection: DB error"
-      );
+      if (req.files.media) deleteMultipleFiles(req.files.media.map(f => f.path), "updateMediaCollection: DB error (media)");
+      if (req.files.media_cropped) deleteMultipleFiles(req.files.media_cropped.map(f => f.path), "updateMediaCollection: DB error (media_cropped)");
     }
     if (error.code === "ER_NO_REFERENCED_ROW_2") {
       res.status(400).json({
@@ -506,116 +470,121 @@ exports.updateMediaCollection = async (req, res) => {
   }
 };
 
-
 exports.getMediaCollectionsByCategory = async (req, res) => {
-  try {
-    const { categoryId } = req.params;
-    const {
-      pageIndex = 1,
-      pageSize = 10,
-      query: search = "",
-      authorId,
-    } = req.query;
+  try {
+    const { categoryId } = req.params;
+    const { pageIndex = 1, pageSize = 10, query: search = "", authorId } = req.query;
+    const sortKey = req.query["sort[key]"];
+    const sortOrder = req.query["sort[order]"];
+    const offset = (parseInt(pageIndex) - 1) * parseInt(pageSize);
+    const parsedPageSize = parseInt(pageSize);
+    let whereClauses = [];
+    let queryParams = [];
 
-    const sortKey = req.query["sort[key]"];
-    const sortOrder = req.query["sort[order]"];
+    if (search) {
+      whereClauses.push(
+        "(mc.title LIKE ? OR mc.caption LIKE ? OR u.name LIKE ?)"
+      );
+      queryParams.push(`%${search}%`, `%${search}%`, `%${search}%`);
+    }
 
-    const offset = (parseInt(pageIndex) - 1) * parseInt(pageSize);
-    const parsedPageSize = parseInt(pageSize);
+    if (authorId && !isNaN(parseInt(authorId))) {
+      whereClauses.push("mc.uploaded_by = ?");
+      queryParams.push(parseInt(authorId));
+    }
 
-    let whereClauses = [];
-    let queryParams = [];
+    if (categoryId && !isNaN(parseInt(categoryId))) {
+      whereClauses.push("mc.category_id = ?");
+      queryParams.push(parseInt(categoryId));
+    } else {
+      return res.status(400).json({ error: "ID kategori tidak valid." });
+    }
 
-    // Logika filter utama
-    if (search) {
-      whereClauses.push(
-        "(mc.title LIKE ? OR mc.caption LIKE ? OR u.name LIKE ?)"
-      );
-      queryParams.push(`%${search}%`, `%${search}%`, `%${search}%`);
-    }
+    const whereSql = whereClauses.length > 0 ? `WHERE ${whereClauses.join(" AND ")}` : "";
+    let orderByClause = "ORDER BY mc.created_at DESC";
+    if (sortKey && sortOrder) {
+      let finalSortBy; 
+      if (sortKey === "uploaded_by_user.name") {
+        finalSortBy = "u.name";
+      } else if (
+        sortKey === "title" ||
+        sortKey === "created_at" ||
+        sortKey === "updated_at"
+      ) {
+        finalSortBy = `mc.${sortKey}`;
+      }
+      if (finalSortBy) {
+        const finalOrder = sortOrder.toUpperCase() === "DESC" ? "DESC" : "ASC";
+        orderByClause = `ORDER BY ${finalSortBy} ${finalOrder}`;
+      }
+    } 
+    const [collections] = await db.query(
+      `SELECT mc.id, mc.title, mc.caption, mc.created_at, mc.uploaded_by, mc.updated_at, u.name AS uploaded_by_name, mc_cat.name AS category_name,mc_cat.id AS category_id FROM media_collection mc LEFT JOIN users u ON mc.uploaded_by = u.id LEFT JOIN media_categories mc_cat ON mc.category_id = mc_cat.id ${whereSql} ${orderByClause} LIMIT ? OFFSET ?`,
+      [...queryParams, parsedPageSize, offset]
+    );
 
-    if (authorId && !isNaN(parseInt(authorId))) {
-      whereClauses.push("mc.uploaded_by = ?");
-      queryParams.push(parseInt(authorId));
-    }
+    const [totalResults] = await db.query(
+      `SELECT COUNT(mc.id) AS total FROM media_collection mc LEFT JOIN users u ON mc.uploaded_by = u.id ${whereSql}`,
+      queryParams
+    );
+    const totalItems = totalResults[0].total;
+    const totalPages = Math.ceil(totalItems / parsedPageSize);
+    const collectionIds = collections.map((col) => col.id);
+    let allMediaFiles = [];
 
-    // Tambahkan filter kategori dari req.params
-    if (categoryId && !isNaN(parseInt(categoryId))) {
-      whereClauses.push("mc.category_id = ?");
-      queryParams.push(parseInt(categoryId));
-    } else {
-      return res.status(400).json({ error: "ID kategori tidak valid." });
-    }
+    if (collectionIds.length > 0) {
+      const [mediaFiles] = await db.query(
+        `SELECT id, media_collection_id, url, cropped_url FROM media WHERE media_collection_id IN (?)`,
+        [collectionIds]
+      );
+      allMediaFiles = mediaFiles;
+    }
 
-    const whereSql =
-      whereClauses.length > 0 ? `WHERE ${whereClauses.join(" AND ")}` : "";
+    const collectionsWithMedia = collections.map((collection) => ({
+      ...collection,
+      media: allMediaFiles.filter(
+        (file) => file.media_collection_id === collection.id
+      ),
+      uploaded_by_user: {
+        id: collection.uploaded_by,
+        name: collection.uploaded_by_name,
+      },
+    }));
 
-    let orderByClause = "ORDER BY mc.created_at DESC";
-    if (sortKey && sortOrder) {
-      let finalSortBy; 
-      if (sortKey === "uploaded_by_user.name") {
-        finalSortBy = "u.name";
-      } else if (
-        sortKey === "title" ||
-        sortKey === "created_at" ||
-        sortKey === "updated_at"
-      ) {
-        finalSortBy = `mc.${sortKey}`;
-      }
+    res.status(200).json({
+      data: collectionsWithMedia,
+      pagination: {
+        totalItems,
+        totalPages,
+        currentPage: parseInt(pageIndex),
+        itemsPerPage: parsedPageSize,
+      },
+    });
+  } catch (error) {
+    console.error("Error fetching media collections by category:", error);
+    res.status(500).json({
+      error: "Gagal mengambil daftar koleksi media berdasarkan kategori.",
+      details: error.message,
+    });
+  }
+};
 
-      if (finalSortBy) {
-        const finalOrder = sortOrder.toUpperCase() === "DESC" ? "DESC" : "ASC";
-        orderByClause = `ORDER BY ${finalSortBy} ${finalOrder}`;
-      }
-    } 
-    const [collections] = await db.query(
-      `SELECT mc.id, mc.title, mc.caption, mc.created_at, mc.uploaded_by, mc.updated_at, u.name AS uploaded_by_name, mc_cat.name AS category_name,mc_cat.id AS category_id FROM media_collection mc LEFT JOIN users u ON mc.uploaded_by = u.id LEFT JOIN media_categories mc_cat ON mc.category_id = mc_cat.id ${whereSql} ${orderByClause} LIMIT ? OFFSET ?`,
-      [...queryParams, parsedPageSize, offset]
-    );
+exports.getMediaCategories = async (req, res) => {
+  try {
+    const [categories] = await db.query(
+      `SELECT id, name AS category_name FROM media_categories`
+    );
 
-    const [totalResults] = await db.query(
-      `SELECT COUNT(mc.id) AS total FROM media_collection mc LEFT JOIN users u ON mc.uploaded_by = u.id ${whereSql}`,
-      queryParams
-    );
-    const totalItems = totalResults[0].total;
-    const totalPages = Math.ceil(totalItems / parsedPageSize);
-
-    const collectionIds = collections.map((col) => col.id);
-    let allMediaFiles = [];
-
-    if (collectionIds.length > 0) {
-      const [mediaFiles] = await db.query(
-        `SELECT id, media_collection_id, url FROM media WHERE media_collection_id IN (?)`,
-        [collectionIds]
-      );
-      allMediaFiles = mediaFiles;
-    }
-
-    const collectionsWithMedia = collections.map((collection) => ({
-      ...collection,
-      media: allMediaFiles.filter(
-        (file) => file.media_collection_id === collection.id
-      ),
-      uploaded_by_user: {
-        id: collection.uploaded_by,
-        name: collection.uploaded_by_name,
-      },
-    }));
-
-    res.status(200).json({
-      data: collectionsWithMedia,
-      pagination: {
-        totalItems,
-        totalPages,
-        currentPage: parseInt(pageIndex),
-        itemsPerPage: parsedPageSize,
-      },
-    });
-  } catch (error) {
-    console.error("Error fetching media collections by category:", error);
-    res.status(500).json({
-      error: "Gagal mengambil daftar koleksi media berdasarkan kategori.",
-      details: error.message,
-    });
-  }
+    res.status(200).json({
+      success: true,
+      data: categories,
+    });
+  } catch (error) {
+    console.error("Error fetching media categories:", error);
+    res.status(500).json({
+      success: false,
+      message: "Gagal mengambil daftar kategori media.",
+      error: error.message,
+    });
+  }
 };

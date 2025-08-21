@@ -109,9 +109,11 @@ exports.tinymceVideoUpload = multer({
 
 exports.mediaUpload = multer({
     storage: createStorage("media"),
-    fileFilter: mediaFileFilter,     
+    fileFilter: mediaFileFilter,
     limits: { fileSize: 10 * 1024 * 1024 },
-}).array("media", 10);
-
+}).fields([
+    { name: 'media', maxCount: 10 },
+    { name: 'media_cropped', maxCount: 1 } 
+]);
 exports.createStorage = createStorage;
 exports.imageFileFilter = imageFileFilter;
