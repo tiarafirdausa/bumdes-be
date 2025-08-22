@@ -1114,6 +1114,131 @@ exports.getPostByCategory = async (req, res) => {
   }
 };
 
+// exports.getPostByTag.js
+exports.getPostsByTag = async (req, res) => {
+  try {
+    const { slug } = req.params;
+    const { pageIndex = 1, pageSize = 10 } = req.query;
+    const offset = (parseInt(pageIndex) - 1) * parseInt(pageSize);
+    const parsedPageSize = parseInt(pageSize);
+
+    // Find the tag ID based on the slug
+    const [tagResult] = await db.query(
+      "SELECT id FROM tags WHERE slug = ?",
+      [slug]
+    );
+
+    if (tagResult.length === 0) {
+      return res.status(404).json({ error: "Tag tidak ditemukan." });
+    }
+
+    const tagId = tagResult[0].id;
+
+    // Query to get posts for the specified tag
+    let query = `
+      SELECT
+        p.id, p.title, p.slug, p.excerpt, p.content, p.featured_image,
+        p.meta_title, p.meta_description, p.author_id, p.category_id, p.status, p.published_at,
+        p.created_at, p.updated_at,
+        u.name AS author_name,
+        u.foto AS author_photo,
+        c.name AS category_name,
+        c.slug AS category_slug,
+        GROUP_CONCAT(DISTINCT t.id, ':', t.name, ':', t.slug ORDER BY t.name SEPARATOR ';') AS tags_info,
+        GROUP_CONCAT(DISTINCT pgi.id, ':', pgi.image_path, ':', IFNULL(pgi.alt_text, '') ORDER BY pgi.sort_order SEPARATOR ';') AS gallery_images_info,
+        (SELECT COUNT(*) FROM comments WHERE post_id = p.id AND status = 'approved') AS comment_count
+      FROM
+        posts p
+      LEFT JOIN
+        users u ON p.author_id = u.id
+      LEFT JOIN
+        categories c ON p.category_id = c.id
+      INNER JOIN
+        post_tags pt ON p.id = pt.post_id
+      LEFT JOIN
+        tags t ON pt.tag_id = t.id
+      LEFT JOIN
+        post_gallery_images pgi ON p.id = pgi.post_id
+      WHERE
+        pt.tag_id = ? AND p.status = 'published'
+      GROUP BY p.id
+      ORDER BY p.published_at DESC
+      LIMIT ? OFFSET ?
+    `;
+
+    const [posts] = await db.query(query, [
+      tagId,
+      parsedPageSize,
+      offset,
+    ]);
+
+    // Query to count total items for the tag
+    const countQuery = `
+      SELECT COUNT(DISTINCT p.id) AS total
+      FROM posts p
+      INNER JOIN post_tags pt ON p.id = pt.post_id
+      WHERE pt.tag_id = ? AND p.status = 'published'
+    `;
+    const [totalResult] = await db.query(countQuery, [tagId]);
+    const totalItems = totalResult[0].total;
+
+    // Process the data to match the desired format
+    const processedPosts = posts.map((post) => {
+      const category = post.category_id
+        ? {
+            id: post.category_id,
+            name: post.category_name,
+            slug: post.category_slug,
+          }
+        : null;
+
+      const tags = post.tags_info
+        ? post.tags_info
+            .split(";")
+            .map((tag) => {
+              const [id, name, slug] = tag.split(":");
+              return { id: parseInt(id), name, slug };
+            })
+            .filter((tag) => tag.id)
+        : [];
+      
+      const gallery_images = post.gallery_images_info
+        ? post.gallery_images_info
+            .split(";")
+            .map((img) => {
+              const [id, image_path, alt_text] = img.split(":");
+              return {
+                id: parseInt(id),
+                image_path,
+                alt_text: alt_text === "null" ? null : alt_text,
+              };
+            })
+            .filter((img) => img.id)
+        : [];
+        
+      delete post.category_name;
+      delete post.category_slug;
+      delete post.tags_info;
+      delete post.gallery_images_info;
+
+      return { ...post, category, tags, gallery_images };
+    });
+
+    res.status(200).json({
+      data: processedPosts,
+      total: totalItems,
+      pageIndex: parseInt(pageIndex),
+      pageSize: parsedPageSize,
+    });
+  } catch (error) {
+    console.error("Error fetching posts by tag slug:", error);
+    res.status(500).json({
+      error: "Gagal mengambil postingan berdasarkan slug tag",
+      details: error.message,
+    });
+  }
+};
+
 exports.deletePost = async (req, res) => {
   let connection;
   try {

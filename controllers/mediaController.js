@@ -5,37 +5,38 @@ const path = require("path");
 const fs = require("fs");
 
 const deleteFile = (filePath, context) => {
-  if (
-    !filePath ||
-    typeof filePath !== "string" ||
-    !filePath.startsWith("/uploads/media/")
-  ) {
-    console.error(
-      `Invalid or suspicious file path for deletion (${context}):`,
-      filePath
-    );
-    return;
-  }
-  const fullPath = path.join(__dirname, "..", "..", "public", filePath);
-  if (fs.existsSync(fullPath)) {
-    fs.unlink(fullPath, (unlinkErr) => {
-      if (unlinkErr)
-        console.error(`Error deleting file (${context}):`, fullPath, unlinkErr);
-      else console.log(`File deleted (${context}):`, fullPath);
-    });
-  } else {
-    console.log(`File not found for deletion (${context}):`, fullPath);
-  }
+  if (
+    !filePath ||
+    typeof filePath !== "string" ||
+    !filePath.startsWith("/uploads/media/")
+  ) {
+    console.error(
+      `Invalid or suspicious file path for deletion (${context}):`,
+      filePath
+    );
+    return;
+  }
+  const fullPath = path.join(__dirname, "..", "..", "public", filePath);
+  console.log("Full path for deletion:", fullPath);
+  if (fs.existsSync(fullPath)) {
+    fs.unlink(fullPath, (unlinkErr) => {
+      if (unlinkErr)
+        console.error(`Error deleting file (${context}):`, fullPath, unlinkErr);
+      else console.log(`File deleted (${context}):`, fullPath);
+    });
+  } else {
+    console.log(`File not found for deletion (${context}):`, fullPath);
+  }
 };
 
 const deleteMultipleFiles = (filePaths, context) => {
-  if (!filePaths || !Array.isArray(filePaths)) {
-    console.warn(
-      `Attempted to delete multiple files with invalid filePaths array (${context}).`
-    );
-    return;
-  }
-  filePaths.forEach((filePath) => deleteFile(filePath, context));
+  if (!filePaths || !Array.isArray(filePaths)) {
+    console.warn(
+      `Attempted to delete multiple files with invalid filePaths array (${context}).`
+    );
+    return;
+  }
+  filePaths.forEach((filePath) => deleteFile(filePath, context));
 };
 
 exports.createMediaCollection = async (req, res) => {
@@ -71,16 +72,18 @@ exports.createMediaCollection = async (req, res) => {
     const mediaCollectionId = collectionResult.insertId;
 
     for (let i = 0; i < uploadedFiles.length; i++) {
-        const file = uploadedFiles[i];
-        const croppedFile = croppedFiles[i] || null;
+      const file = uploadedFiles[i];
+      const croppedFile = croppedFiles[i] || null;
 
-        const originalUrl = `/uploads/media/${file.filename}`;
-        const croppedUrl = croppedFile ? `/uploads/media/${croppedFile.filename}` : null;
+      const originalUrl = `/uploads/media/${file.filename}`;
+      const croppedUrl = croppedFile
+        ? `/uploads/media/${croppedFile.filename}`
+        : null;
 
-        await connection.query(
-            "INSERT INTO media (media_collection_id, url, cropped_url, file_name, sort_order) VALUES (?, ?, ?, ?, ?)",
-            [mediaCollectionId, originalUrl, croppedUrl, file.originalname, i + 1]
-        );
+      await connection.query(
+        "INSERT INTO media (media_collection_id, url, cropped_url, file_name, sort_order) VALUES (?, ?, ?, ?, ?)",
+        [mediaCollectionId, originalUrl, croppedUrl, file.originalname, i + 1]
+      );
     }
 
     await connection.commit();
@@ -103,8 +106,16 @@ exports.createMediaCollection = async (req, res) => {
     console.error("Error creating media collection:", error);
     if (connection) await connection.rollback();
     if (req.files) {
-      if (req.files.media) deleteMultipleFiles(req.files.media.map(f => f.path), "createMediaCollection: DB error (media)");
-      if (req.files.media_cropped) deleteMultipleFiles(req.files.media_cropped.map(f => f.path), "createMediaCollection: DB error (media_cropped)");
+      if (req.files.media)
+        deleteMultipleFiles(
+          req.files.media.map((f) => f.path),
+          "createMediaCollection: DB error (media)"
+        );
+      if (req.files.media_cropped)
+        deleteMultipleFiles(
+          req.files.media_cropped.map((f) => f.path),
+          "createMediaCollection: DB error (media_cropped)"
+        );
     }
     res
       .status(500)
@@ -116,7 +127,13 @@ exports.createMediaCollection = async (req, res) => {
 
 exports.getMediaCollections = async (req, res) => {
   try {
-    const { pageIndex = 1, pageSize = 10, query: search = "", categoryId, authorId } = req.query;
+    const {
+      pageIndex = 1,
+      pageSize = 10,
+      query: search = "",
+      categoryId,
+      authorId,
+    } = req.query;
     const sortKey = req.query["sort[key]"];
     const sortOrder = req.query["sort[order]"];
     const offset = (parseInt(pageIndex) - 1) * parseInt(pageSize);
@@ -141,10 +158,11 @@ exports.getMediaCollections = async (req, res) => {
       queryParams.push(parseInt(authorId));
     }
 
-    const whereSql = whereClauses.length > 0 ? `WHERE ${whereClauses.join(" AND ")}` : "";
+    const whereSql =
+      whereClauses.length > 0 ? `WHERE ${whereClauses.join(" AND ")}` : "";
     let orderByClause = "ORDER BY mc.created_at DESC";
     if (sortKey && sortOrder) {
-      let finalSortBy; 
+      let finalSortBy;
       if (sortKey === "uploaded_by_user.name") {
         finalSortBy = "u.name";
       } else if (
@@ -158,7 +176,7 @@ exports.getMediaCollections = async (req, res) => {
         const finalOrder = sortOrder.toUpperCase() === "DESC" ? "DESC" : "ASC";
         orderByClause = `ORDER BY ${finalSortBy} ${finalOrder}`;
       }
-    } 
+    }
     const [collections] = await db.query(
       `SELECT mc.id, mc.title, mc.caption, mc.created_at, mc.uploaded_by, mc.updated_at, u.name AS uploaded_by_name, mc_cat.name AS category_name,mc_cat.id AS category_id FROM media_collection mc LEFT JOIN users u ON mc.uploaded_by = u.id LEFT JOIN media_categories mc_cat ON mc.category_id = mc_cat.id ${whereSql} ${orderByClause} LIMIT ? OFFSET ?`,
       [...queryParams, parsedPageSize, offset]
@@ -254,9 +272,13 @@ exports.deleteMediaCollection = async (req, res) => {
       "SELECT url, cropped_url FROM media WHERE media_collection_id = ?",
       [id]
     );
-    const filePathsToDelete = filesToDelete.flatMap((f) => [f.url, f.cropped_url].filter(Boolean));
+    const filePathsToDelete = filesToDelete.flatMap((f) =>
+      [f.url, f.cropped_url].filter(Boolean)
+    );
 
-    await connection.query("DELETE FROM media WHERE media_collection_id = ?", [id]);
+    await connection.query("DELETE FROM media WHERE media_collection_id = ?", [
+      id,
+    ]);
     const [result] = await connection.query(
       "DELETE FROM media_collection WHERE id = ?",
       [id]
@@ -310,8 +332,16 @@ exports.updateMediaCollection = async (req, res) => {
 
     if (oldCollection.length === 0) {
       if (req.files) {
-        if (req.files.media) deleteMultipleFiles(req.files.media.map(f => f.path), "updateMediaCollection: collection not found");
-        if (req.files.media_cropped) deleteMultipleFiles(req.files.media_cropped.map(f => f.path), "updateMediaCollection: collection not found");
+        if (req.files.media)
+          deleteMultipleFiles(
+            req.files.media.map((f) => f.path),
+            "updateMediaCollection: collection not found"
+          );
+        if (req.files.media_cropped)
+          deleteMultipleFiles(
+            req.files.media_cropped.map((f) => f.path),
+            "updateMediaCollection: collection not found"
+          );
       }
       return res.status(404).json({ error: "Koleksi media tidak ditemukan." });
     }
@@ -363,7 +393,9 @@ exports.updateMediaCollection = async (req, res) => {
           [...idsToDelete, id]
         );
         if (filesToDelete.length > 0) {
-          const filePathsToDelete = filesToDelete.flatMap(file => [file.url, file.cropped_url].filter(Boolean));
+          const filePathsToDelete = filesToDelete.flatMap((file) =>
+            [file.url, file.cropped_url].filter(Boolean)
+          );
           deleteMultipleFiles(
             filePathsToDelete,
             "updateMediaCollection: delete specific files"
@@ -413,8 +445,16 @@ exports.updateMediaCollection = async (req, res) => {
       const fileValues = uploadedFiles.map((file, index) => {
         const croppedFile = croppedFiles[index] || null;
         const originalUrl = `/uploads/media/${file.filename}`;
-        const croppedUrl = croppedFile ? `/uploads/media/${croppedFile.filename}` : null;
-        return [id, originalUrl, croppedUrl, file.originalname, nextSortOrder + index];
+        const croppedUrl = croppedFile
+          ? `/uploads/media/${croppedFile.filename}`
+          : null;
+        return [
+          id,
+          originalUrl,
+          croppedUrl,
+          file.originalname,
+          nextSortOrder + index,
+        ];
       });
 
       await connection.query(
@@ -451,8 +491,16 @@ exports.updateMediaCollection = async (req, res) => {
     console.error("Error updating media collection:", error);
     if (connection) await connection.rollback();
     if (req.files) {
-      if (req.files.media) deleteMultipleFiles(req.files.media.map(f => f.path), "updateMediaCollection: DB error (media)");
-      if (req.files.media_cropped) deleteMultipleFiles(req.files.media_cropped.map(f => f.path), "updateMediaCollection: DB error (media_cropped)");
+      if (req.files.media)
+        deleteMultipleFiles(
+          req.files.media.map((f) => f.path),
+          "updateMediaCollection: DB error (media)"
+        );
+      if (req.files.media_cropped)
+        deleteMultipleFiles(
+          req.files.media_cropped.map((f) => f.path),
+          "updateMediaCollection: DB error (media_cropped)"
+        );
     }
     if (error.code === "ER_NO_REFERENCED_ROW_2") {
       res.status(400).json({
@@ -473,7 +521,12 @@ exports.updateMediaCollection = async (req, res) => {
 exports.getMediaCollectionsByCategory = async (req, res) => {
   try {
     const { categoryId } = req.params;
-    const { pageIndex = 1, pageSize = 10, query: search = "", authorId } = req.query;
+    const {
+      pageIndex = 1,
+      pageSize = 10,
+      query: search = "",
+      authorId,
+    } = req.query;
     const sortKey = req.query["sort[key]"];
     const sortOrder = req.query["sort[order]"];
     const offset = (parseInt(pageIndex) - 1) * parseInt(pageSize);
@@ -500,10 +553,11 @@ exports.getMediaCollectionsByCategory = async (req, res) => {
       return res.status(400).json({ error: "ID kategori tidak valid." });
     }
 
-    const whereSql = whereClauses.length > 0 ? `WHERE ${whereClauses.join(" AND ")}` : "";
+    const whereSql =
+      whereClauses.length > 0 ? `WHERE ${whereClauses.join(" AND ")}` : "";
     let orderByClause = "ORDER BY mc.created_at DESC";
     if (sortKey && sortOrder) {
-      let finalSortBy; 
+      let finalSortBy;
       if (sortKey === "uploaded_by_user.name") {
         finalSortBy = "u.name";
       } else if (
@@ -517,7 +571,7 @@ exports.getMediaCollectionsByCategory = async (req, res) => {
         const finalOrder = sortOrder.toUpperCase() === "DESC" ? "DESC" : "ASC";
         orderByClause = `ORDER BY ${finalSortBy} ${finalOrder}`;
       }
-    } 
+    }
     const [collections] = await db.query(
       `SELECT mc.id, mc.title, mc.caption, mc.created_at, mc.uploaded_by, mc.updated_at, u.name AS uploaded_by_name, mc_cat.name AS category_name,mc_cat.id AS category_id FROM media_collection mc LEFT JOIN users u ON mc.uploaded_by = u.id LEFT JOIN media_categories mc_cat ON mc.category_id = mc_cat.id ${whereSql} ${orderByClause} LIMIT ? OFFSET ?`,
       [...queryParams, parsedPageSize, offset]
