@@ -1,53 +1,92 @@
 // controllers/dashboardController.js
 const db = require("../models/db");
 
+// Fungsi helper untuk menjalankan kueri dengan penanganan kesalahan
+const executeQuery = async (connection, query) => {
+    try {
+        const [rows] = await connection.query(query);
+        return rows;
+    } catch (error) {
+        throw new Error(`Database query failed: ${error.message}`);
+    }
+};
+
 exports.getDashboardSummary = async (req, res) => {
-    let connection; 
+    let connection;
     try {
         connection = await db.getConnection();
 
-        const [totalPostsResult] = await connection.query('SELECT COUNT(*) AS count FROM posts');
-        const totalPosts = totalPostsResult[0].count;
-
-        const [totalPagesResult] = await connection.query('SELECT COUNT(*) AS count FROM pages');
-        const totalPages = totalPagesResult[0].count;
-
-        const [totalUsersResult] = await connection.query('SELECT COUNT(*) AS count FROM users');
-        const totalUsers = totalUsersResult[0].count;
-
-        const [totalCommentsResult] = await connection.query('SELECT COUNT(*) AS count FROM comments');
-        const totalComments = totalCommentsResult[0].count;
-
-        const [pendingCommentsResult] = await connection.query("SELECT COUNT(*) AS count FROM comments WHERE status = 'pending'");
-        const pendingComments = pendingCommentsResult[0].count;
-
-        const [recentPosts] = await connection.query('SELECT id, title, created_at FROM posts ORDER BY created_at DESC LIMIT 5');
-
-        const [recentComments] = await connection.query(
-            `SELECT c.id, c.content, c.created_at, c.post_id, c.author_name, p.title AS postTitle
-             FROM comments c
-             LEFT JOIN posts p ON c.post_id = p.id
-             ORDER BY c.created_at DESC LIMIT 5`
-        );
-
-        const [recentUsers] = await connection.query('SELECT id, name, email, created_at FROM users ORDER BY created_at DESC LIMIT 5');
-
-        res.status(200).json({
-            totalPosts,
-            totalPages,
-            totalUsers,
-            totalComments,
-            pendingComments,
+        const [
+            totalPostsResult,
+            totalPagesResult,
+            totalUsersResult,
+            totalCommentsResult,
+            pendingCommentsResult,
             recentPosts,
             recentComments,
-            recentUsers
-        });
+            recentUsers,
+            topPosts,
+        ] = await Promise.all([
+            executeQuery(connection, 'SELECT COUNT(*) AS count FROM posts'),
+            executeQuery(connection, 'SELECT COUNT(*) AS count FROM pages'),
+            executeQuery(connection, 'SELECT COUNT(*) AS count FROM users'),
+            executeQuery(connection, 'SELECT COUNT(*) AS count FROM comments'),
+            executeQuery(connection, "SELECT COUNT(*) AS count FROM comments WHERE status = 'pending'"),
+            executeQuery(connection, `
+                SELECT 
+                    p.id, 
+                    p.title, 
+                    p.created_at, 
+                    p.status, 
+                    p.hits,
+                    p.slug,
+                    u.name AS author_name 
+                FROM posts p
+                LEFT JOIN users u ON p.author_id = u.id
+                ORDER BY p.created_at DESC 
+                LIMIT 5
+            `),
+            executeQuery(connection, `
+                SELECT c.id, c.content, c.created_at, c.post_id, c.author_name, p.title AS postTitle
+                FROM comments c
+                LEFT JOIN posts p ON c.post_id = p.id
+                ORDER BY c.created_at DESC
+                LIMIT 3
+            `),
+            executeQuery(connection, 'SELECT id, name, email, created_at FROM users ORDER BY created_at DESC LIMIT 5'),
+            executeQuery(connection, `
+                SELECT 
+                    p.id, 
+                    p.title, 
+                    p.featured_image, 
+                    p.hits,
+                    u.name AS author_name
+                FROM posts p
+                LEFT JOIN users u ON p.author_id = u.id
+                ORDER BY p.hits DESC 
+                LIMIT 3
+            `),
+        ]);
+
+        const summaryData = {
+            totalPosts: totalPostsResult[0].count,
+            totalPages: totalPagesResult[0].count,
+            totalUsers: totalUsersResult[0].count,
+            totalComments: totalCommentsResult[0].count,
+            pendingComments: pendingCommentsResult[0].count,
+            recentPosts: recentPosts,
+            recentComments: recentComments,
+            recentUsers: recentUsers,
+            topPosts: topPosts,
+        };
+
+        res.status(200).json(summaryData);
 
     } catch (error) {
         console.error('Error fetching dashboard summary:', error);
         res.status(500).json({ message: 'Server Error', error: error.message });
     } finally {
-        if (connection) connection.release(); // Pastikan koneksi dikembalikan ke pool
+        if (connection) connection.release();
     }
 };
 
@@ -56,28 +95,35 @@ exports.getAnalyticsData = async (req, res) => {
     try {
         connection = await db.getConnection();
 
-        // Contoh: Data kunjungan bulanan (ini sangat bergantung pada bagaimana Anda melacak kunjungan)
-        // Ini adalah contoh placeholder. Implementasi nyata akan jauh lebih kompleks.
-        const monthlyVisits = [
-            { month: 'Jan', visits: 1200 },
-            { month: 'Feb', visits: 1500 },
-            { month: 'Mar', visits: 1300 },
-            { month: 'Apr', visits: 1800 },
-            { month: 'May', visits: 2000 },
-            { month: 'Jun', visits: 1700 },
-            // Anda perlu query database Anda di sini untuk data nyata.
-            // Contoh query:
-            // const [visits] = await connection.query(`
-            //     SELECT DATE_FORMAT(created_at, '%Y-%m') AS month, COUNT(*) AS visits
-            //     FROM page_views
-            //     WHERE created_at >= CURDATE() - INTERVAL 6 MONTH
-            //     GROUP BY month
-            //     ORDER BY month;
-            // `);
-            // res.status(200).json(visits);
-        ];
+        const [
+            totalViewsResult,
+            dailyViews,
+            dailyUsers,
+        ] = await Promise.all([
+            executeQuery(connection, `
+                SELECT IFNULL(SUM(hits), 0) AS total_views FROM posts;
+            `),
+            executeQuery(connection, `
+                SELECT DATE(created_at) AS period, COUNT(*) AS posts
+                FROM posts
+                WHERE created_at >= CURDATE() - INTERVAL 30 DAY
+                GROUP BY period
+                ORDER BY period ASC;
+            `),
+            executeQuery(connection, `
+                SELECT DATE(created_at) AS period, COUNT(*) AS users
+                FROM users
+                WHERE created_at >= CURDATE() - INTERVAL 30 DAY
+                GROUP BY period
+                ORDER BY period ASC;
+            `),
+        ]);
 
-        res.status(200).json(monthlyVisits);
+        res.status(200).json({
+            totalViews: totalViewsResult[0].total_views,
+            dailyViews: dailyViews,
+            dailyUsers: dailyUsers,
+        });
 
     } catch (error) {
         console.error('Error fetching analytics data:', error);

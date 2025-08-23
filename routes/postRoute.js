@@ -9,6 +9,7 @@ router.get('/', postController.getPosts);
 router.get('/id/:id', postController.getPostById);
 router.get('/:slug', postController.getPostBySlug); 
 router.get("/category/:slug", postController.getPostByCategory);
+router.get("/tag/:slug", postController.getPostsByTag);
 router.put('/id/:id', postImageUpload, postController.updatePost);
 router.delete('/:id', postController.deletePost);
 
