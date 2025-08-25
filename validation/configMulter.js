@@ -115,5 +115,12 @@ exports.mediaUpload = multer({
     { name: 'media', maxCount: 10 },
     { name: 'media_cropped', maxCount: 1 } 
 ]);
+
+exports.bannerImageUpload = multer({
+  storage: createStorage("banners"),
+  fileFilter: imageFileFilter,
+  limits: { fileSize: 2 * 1024 * 1024 },
+}).single("gambar");
+
 exports.createStorage = createStorage;
 exports.imageFileFilter = imageFileFilter;
