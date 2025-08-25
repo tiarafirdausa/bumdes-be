@@ -203,3 +203,18 @@ exports.getHomeModules = async (req, res) => {
     });
   }
 };
+
+exports.getWidgetModules = async (req, res) => {
+  try {
+    const query = `SELECT * FROM modul WHERE widget = 1 AND aktif = 1 ORDER BY judul ASC`;
+    const [moduls] = await db.query(query);
+
+    res.status(200).json(moduls);
+  } catch (error) {
+    console.error("Error fetching widget modules:", error);
+    res.status(500).json({
+      error: "Gagal mengambil daftar modul widget.",
+      details: error.message,
+    });
+  }
+};
