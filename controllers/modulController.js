@@ -3,7 +3,7 @@ const db = require("../models/db");
 
 // Menambahkan modul baru
 exports.addModul = async (req, res) => {
-  const { judul, folder, widget, home, aktif } = req.body;
+  const { judul, folder, widget, home, aktif, order } = req.body;
 
   if (!judul || !folder) {
     return res.status(400).json({ error: "Judul dan Folder wajib diisi." });
@@ -18,10 +18,14 @@ exports.addModul = async (req, res) => {
   if (typeof aktif !== "boolean") {
     return res.status(400).json({ error: "Nilai Aktif tidak valid." });
   }
+  
+  if (typeof order !== "number" || order < 0) {
+    return res.status(400).json({ error: "Nilai Order tidak valid." });
+  }
 
   try {
-    const query = `INSERT INTO modul (judul, folder, widget, home, aktif) VALUES (?, ?, ?, ?, ?)`;
-    const values = [judul, folder, widget, home, aktif];
+    const query = `INSERT INTO modul (judul, folder, widget, home, aktif, \`order\`) VALUES (?, ?, ?, ?, ?, ?)`;
+    const values = [judul, folder, widget, home, aktif, order]; 
 
     const [result] = await db.query(query, values);
 
@@ -128,7 +132,7 @@ exports.getModulById = async (req, res) => {
 // Memperbarui data modul
 exports.updateModul = async (req, res) => {
   const { id } = req.params;
-  const { judul, folder, widget, home, aktif } = req.body; 
+  const { judul, folder, widget, home, aktif, order } = req.body;
 
   if (!judul || !folder) {
     return res.status(400).json({ error: "Judul dan Folder wajib diisi." });
@@ -143,10 +147,14 @@ exports.updateModul = async (req, res) => {
   if (aktif === undefined) {
     return res.status(400).json({ error: "Nilai Aktif tidak valid." });
   }
+  
+  if (typeof order !== "number" || order < 0) {
+    return res.status(400).json({ error: "Nilai Order tidak valid." });
+  }
 
   try {
-    const query = `UPDATE modul SET judul = ?, folder = ?, widget = ?, home = ?, aktif = ? WHERE id_modul = ?`; 
-    const values = [judul, folder, widget, home, aktif, id];
+    const query = `UPDATE modul SET judul = ?, folder = ?, widget = ?, home = ?, aktif = ?, \`order\` = ? WHERE id_modul = ?`;
+    const values = [judul, folder, widget, home, aktif, order, id]; 
     const [result] = await db.query(query, values);
 
     if (result.affectedRows === 0) {
@@ -191,7 +199,7 @@ exports.deleteModul = async (req, res) => {
 
 exports.getHomeModules = async (req, res) => {
   try {
-    const query = `SELECT * FROM modul WHERE home = 1 AND aktif = 1 ORDER BY judul ASC`;
+    const query = `SELECT * FROM modul WHERE home = 1 AND aktif = 1 ORDER BY \`order\` ASC`;
     const [moduls] = await db.query(query);
 
     res.status(200).json(moduls);
@@ -206,7 +214,7 @@ exports.getHomeModules = async (req, res) => {
 
 exports.getWidgetModules = async (req, res) => {
   try {
-    const query = `SELECT * FROM modul WHERE widget = 1 AND aktif = 1 ORDER BY judul ASC`;
+    const query = `SELECT * FROM modul WHERE widget = 1 AND aktif = 1 ORDER BY \`order\` ASC`;
     const [moduls] = await db.query(query);
 
     res.status(200).json(moduls);

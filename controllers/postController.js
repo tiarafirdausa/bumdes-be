@@ -1114,7 +1114,6 @@ exports.getPostByCategory = async (req, res) => {
   }
 };
 
-// exports.getPostByTag.js
 exports.getPostsByTag = async (req, res) => {
   try {
     const { slug } = req.params;
