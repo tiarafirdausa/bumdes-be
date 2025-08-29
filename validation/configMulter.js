@@ -122,5 +122,11 @@ exports.bannerImageUpload = multer({
   limits: { fileSize: 2 * 1024 * 1024 },
 }).single("gambar");
 
+exports.linkImageUpload = multer({
+  storage: createStorage("links"),
+  fileFilter: imageFileFilter,
+  limits: { fileSize: 2 * 1024 * 1024 },
+}).single("gambar");
+
 exports.createStorage = createStorage;
 exports.imageFileFilter = imageFileFilter;

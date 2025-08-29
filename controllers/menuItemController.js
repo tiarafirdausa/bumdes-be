@@ -34,6 +34,11 @@ const getReferenceSlugOrTitle = async (type, referenceId) => {
       slugColumn = "id"; 
       titleColumn = "title";
       break;
+    case "link":
+      query = "SELECT link, judul AS title FROM links WHERE id = ?";
+      slugColumn = "link";
+      titleColumn = "judul";
+      break;
     default:
       return null;
   }
@@ -42,9 +47,10 @@ const getReferenceSlugOrTitle = async (type, referenceId) => {
     const [rows] = await db.query(query, [referenceId]);
     if (rows.length > 0) {
       let finalSlug = rows[0][slugColumn];
-      // Khusus untuk 'media' yang tidak memiliki slug, kita buatkan
       if (type === "media") {
         finalSlug = `media/${finalSlug}`;
+      } else if (type === "link") {
+        finalSlug = finalSlug || `/link/${referenceId}`;
       }
       return {
         slug: finalSlug,
@@ -109,6 +115,7 @@ exports.createMenuItem = async (req, res) => {
       "post",
       "media",
       "media_category",
+      "link"
     ];
     if (type && !allowedTypes.includes(type)) {
       return res
@@ -133,6 +140,8 @@ exports.createMenuItem = async (req, res) => {
       finalUrl = "/post"; // URL untuk list all posts
     } else if (type === "media" && !reference_id) {
       finalUrl = "/media"; // URL untuk list all media
+    } else if (type === "link" && !reference_id) {
+      finalUrl = "/link"; // URL untuk list all links
     } else if (reference_id) {
       // Untuk tipe lain yang merujuk ke item spesifik
       const refData = await getReferenceSlugOrTitle(type, reference_id);
@@ -255,6 +264,7 @@ exports.updateMenuItem = async (req, res) => {
       "post",
       "media",
       "media_category",
+      "link"
     ];
     if (newType && !allowedTypes.includes(newType)) {
       return res
@@ -281,6 +291,8 @@ exports.updateMenuItem = async (req, res) => {
         newUrl = "/post"; // URL untuk list all posts
       } else if (newType === "media" && !newReferenceId) {
         newUrl = "/media"; // URL untuk list all media
+      } else if (newType === "link" && !newReferenceId) {
+        newUrl = "/link";
       } else if (newReferenceId) {
         // Untuk tipe lain yang merujuk ke item spesifik
         const refData = await getReferenceSlugOrTitle(newType, newReferenceId);
