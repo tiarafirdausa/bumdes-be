@@ -43,83 +43,69 @@ exports.createMediaCollection = async (req, res) => {
   let connection;
   try {
     const { title, caption, category_id, uploaded_by } = req.body;
-    const uploadedFiles = req.files.media;
-    const croppedFiles = req.files.media_cropped || [];
+    const uploadedFiles = req.files.media || [];
+    const featuredImageFile = req.files.featured_image ? req.files.featured_image[0] : null;
 
-    console.log("Uploaded Original Files:", uploadedFiles);
-    console.log("Uploaded Cropped Files:", croppedFiles);
-
-    if (!uploadedFiles || uploadedFiles.length === 0) {
-      return res
-        .status(400)
-        .json({ error: "Setidaknya satu file harus diunggah." });
+    if (!uploadedFiles.length && !featuredImageFile) {
+      return res.status(400).json({ error: "At least one media file or featured image must be uploaded." });
     }
     if (!uploaded_by) {
-      deleteMultipleFiles(
-        uploadedFiles.map((f) => f.path),
-        "createMediaCollection: missing uploaded_by"
-      );
-      return res.status(400).json({ error: "ID pengunggah wajib diisi." });
+      if (featuredImageFile) deleteFile(featuredImageFile.path, "createMediaCollection: missing uploaded_by (featured)");
+      deleteMultipleFiles(uploadedFiles.map((f) => f.path), "createMediaCollection: missing uploaded_by");
+      return res.status(400).json({ error: "Uploader ID is required." });
     }
+
+    const featuredImageUrl = featuredImageFile ? `/uploads/media/${featuredImageFile.filename}` : null;
 
     connection = await db.getConnection();
     await connection.beginTransaction();
 
     const [collectionResult] = await connection.query(
-      "INSERT INTO media_collection (title, caption, category_id, uploaded_by, created_at) VALUES (?, ?, ?, ?, NOW())",
-      [title || null, caption || null, category_id || null, uploaded_by]
+      "INSERT INTO media_collection (title, caption, category_id, uploaded_by, featured_image, created_at) VALUES (?, ?, ?, ?, ?, NOW())",
+      [title || null, caption || null, category_id || null, uploaded_by, featuredImageUrl]
     );
     const mediaCollectionId = collectionResult.insertId;
 
-    for (let i = 0; i < uploadedFiles.length; i++) {
-      const file = uploadedFiles[i];
-      const croppedFile = croppedFiles[i] || null;
-
-      const originalUrl = `/uploads/media/${file.filename}`;
-      const croppedUrl = croppedFile
-        ? `/uploads/media/${croppedFile.filename}`
-        : null;
+    if (uploadedFiles.length > 0) {
+      const fileValues = uploadedFiles.map((file, i) => {
+        const originalUrl = `/uploads/media/${file.filename}`;
+        return [mediaCollectionId, originalUrl, file.originalname, i + 1];
+      });
 
       await connection.query(
-        "INSERT INTO media (media_collection_id, url, cropped_url, file_name, sort_order) VALUES (?, ?, ?, ?, ?)",
-        [mediaCollectionId, originalUrl, croppedUrl, file.originalname, i + 1]
+        "INSERT INTO media (media_collection_id, url, file_name, sort_order) VALUES ?",
+        [fileValues]
       );
     }
 
     await connection.commit();
 
     const [insertedFiles] = await db.query(
-      "SELECT id, file_name, url, cropped_url, sort_order FROM media WHERE media_collection_id = ? ORDER BY sort_order",
+      "SELECT id, file_name, url, sort_order FROM media WHERE media_collection_id = ? ORDER BY sort_order",
+      [mediaCollectionId]
+    );
+    const [newCollection] = await db.query(
+      "SELECT title, caption, category_id, featured_image FROM media_collection WHERE id = ?",
       [mediaCollectionId]
     );
 
     res.status(201).json({
       id: mediaCollectionId,
-      title: title,
-      caption: caption,
-      category_id: category_id,
+      ...newCollection[0],
       uploaded_by: uploaded_by,
       files: insertedFiles,
-      message: "Koleksi media berhasil dibuat.",
+      message: "Media collection successfully created.",
     });
   } catch (error) {
     console.error("Error creating media collection:", error);
     if (connection) await connection.rollback();
     if (req.files) {
+      if (req.files.featured_image)
+        deleteFile(req.files.featured_image[0].path, "createMediaCollection: DB error (featured)");
       if (req.files.media)
-        deleteMultipleFiles(
-          req.files.media.map((f) => f.path),
-          "createMediaCollection: DB error (media)"
-        );
-      if (req.files.media_cropped)
-        deleteMultipleFiles(
-          req.files.media_cropped.map((f) => f.path),
-          "createMediaCollection: DB error (media_cropped)"
-        );
+        deleteMultipleFiles(req.files.media.map((f) => f.path), "createMediaCollection: DB error (media)");
     }
-    res
-      .status(500)
-      .json({ error: "Gagal membuat koleksi media.", details: error.message });
+    res.status(500).json({ error: "Failed to create media collection.", details: error.message });
   } finally {
     if (connection) connection.release();
   }
@@ -178,7 +164,7 @@ exports.getMediaCollections = async (req, res) => {
       }
     }
     const [collections] = await db.query(
-      `SELECT mc.id, mc.title, mc.caption, mc.created_at, mc.uploaded_by, mc.updated_at, u.name AS uploaded_by_name, mc_cat.name AS category_name,mc_cat.id AS category_id FROM media_collection mc LEFT JOIN users u ON mc.uploaded_by = u.id LEFT JOIN media_categories mc_cat ON mc.category_id = mc_cat.id ${whereSql} ${orderByClause} LIMIT ? OFFSET ?`,
+      `SELECT mc.id, mc.title, mc.caption, mc.created_at, mc.uploaded_by, mc.updated_at, mc.featured_image, u.name AS uploaded_by_name, mc_cat.name AS category_name,mc_cat.id AS category_id FROM media_collection mc LEFT JOIN users u ON mc.uploaded_by = u.id LEFT JOIN media_categories mc_cat ON mc.category_id = mc_cat.id ${whereSql} ${orderByClause} LIMIT ? OFFSET ?`,
       [...queryParams, parsedPageSize, offset]
     );
 
@@ -194,7 +180,7 @@ exports.getMediaCollections = async (req, res) => {
 
     if (collectionIds.length > 0) {
       const [mediaFiles] = await db.query(
-        `SELECT id, media_collection_id, url, cropped_url FROM media WHERE media_collection_id IN (?)`,
+        "SELECT id, media_collection_id, url FROM media WHERE media_collection_id IN (?)",
         [collectionIds]
       );
       allMediaFiles = mediaFiles;
@@ -223,7 +209,7 @@ exports.getMediaCollections = async (req, res) => {
   } catch (error) {
     console.error("Error fetching media collections:", error);
     res.status(500).json({
-      error: "Gagal mengambil daftar koleksi media.",
+      error: "Failed to retrieve media collection list.",
       details: error.message,
     });
   }
@@ -233,16 +219,16 @@ exports.getMediaCollectionById = async (req, res) => {
   try {
     const { id } = req.params;
     const [collection] = await db.query(
-      `SELECT mc.id, mc.title, mc.caption, mc.created_at, mc.uploaded_by, u.name AS uploaded_by_name, mc_cat.name AS category_name, mc_cat.id AS category_id FROM media_collection mc LEFT JOIN users u ON mc.uploaded_by = u.id LEFT JOIN media_categories mc_cat ON mc.category_id = mc_cat.id WHERE mc.id = ?`,
+      `SELECT mc.id, mc.title, mc.caption, mc.created_at, mc.uploaded_by, mc.featured_image, u.name AS uploaded_by_name, mc_cat.name AS category_name, mc_cat.id AS category_id FROM media_collection mc LEFT JOIN users u ON mc.uploaded_by = u.id LEFT JOIN media_categories mc_cat ON mc.category_id = mc_cat.id WHERE mc.id = ?`,
       [id]
     );
 
     if (collection.length === 0) {
-      return res.status(404).json({ error: "Koleksi media tidak ditemukan." });
+      return res.status(404).json({ error: "Media collection not found." });
     }
 
     const [files] = await db.query(
-      "SELECT id, file_name, url, cropped_url, sort_order FROM media WHERE media_collection_id = ? ORDER BY sort_order",
+      "SELECT id, file_name, url, sort_order FROM media WHERE media_collection_id = ? ORDER BY sort_order",
       [id]
     );
 
@@ -255,7 +241,7 @@ exports.getMediaCollectionById = async (req, res) => {
   } catch (error) {
     console.error("Error fetching media collection by ID:", error);
     res.status(500).json({
-      error: "Gagal mengambil koleksi media.",
+      error: "Failed to retrieve media collection.",
       details: error.message,
     });
   }
@@ -269,16 +255,22 @@ exports.deleteMediaCollection = async (req, res) => {
     await connection.beginTransaction();
 
     const [filesToDelete] = await connection.query(
-      "SELECT url, cropped_url FROM media WHERE media_collection_id = ?",
+      "SELECT url FROM media WHERE media_collection_id = ?",
       [id]
     );
     const filePathsToDelete = filesToDelete.flatMap((f) =>
-      [f.url, f.cropped_url].filter(Boolean)
+      [f.url]
     );
 
-    await connection.query("DELETE FROM media WHERE media_collection_id = ?", [
-      id,
-    ]);
+    const [featuredImage] = await connection.query(
+      "SELECT featured_image FROM media_collection WHERE id = ?",
+      [id]
+    );
+    if (featuredImage.length > 0 && featuredImage[0].featured_image) {
+      filePathsToDelete.push(featuredImage[0].featured_image);
+    }
+
+    await connection.query("DELETE FROM media WHERE media_collection_id = ?", [id]);
     const [result] = await connection.query(
       "DELETE FROM media_collection WHERE id = ?",
       [id]
@@ -286,17 +278,17 @@ exports.deleteMediaCollection = async (req, res) => {
     await connection.commit();
 
     if (result.affectedRows === 0) {
-      return res.status(404).json({ error: "Koleksi media tidak ditemukan." });
+      return res.status(404).json({ error: "Media collection not found." });
     }
 
     deleteMultipleFiles(filePathsToDelete, "deleteMediaCollection");
 
-    res.status(200).json({ message: "Koleksi media berhasil dihapus." });
+    res.status(200).json({ message: "Media collection successfully deleted." });
   } catch (error) {
     console.error("Error deleting media collection:", error);
     if (connection) await connection.rollback();
     res.status(500).json({
-      error: "Gagal menghapus koleksi media.",
+      error: "Failed to delete media collection.",
       details: error.message,
     });
   } finally {
@@ -314,37 +306,33 @@ exports.updateMediaCollection = async (req, res) => {
       category_id,
       delete_media_file_ids,
       updated_sort_order,
+      clear_featured_image,
     } = req.body;
     const uploadedFiles = req.files.media || [];
-    const croppedFiles = req.files.media_cropped || [];
+    const newFeaturedImage = req.files.featured_image ? req.files.featured_image[0] : null;
 
     if (!id) {
-      return res.status(400).json({ error: "ID koleksi media tidak valid." });
+      return res.status(400).json({ error: "Invalid media collection ID." });
     }
 
     let updateFields = [];
     let updateValues = [];
+    let responseBody = {};
 
     const [oldCollection] = await db.query(
-      "SELECT id FROM media_collection WHERE id = ?",
+      "SELECT featured_image FROM media_collection WHERE id = ?",
       [id]
     );
 
     if (oldCollection.length === 0) {
       if (req.files) {
-        if (req.files.media)
-          deleteMultipleFiles(
-            req.files.media.map((f) => f.path),
-            "updateMediaCollection: collection not found"
-          );
-        if (req.files.media_cropped)
-          deleteMultipleFiles(
-            req.files.media_cropped.map((f) => f.path),
-            "updateMediaCollection: collection not found"
-          );
+        if (req.files.media) deleteMultipleFiles(req.files.media.map((f) => f.path), "updateMediaCollection: collection not found (media)");
+        // Removed: if (req.files.media_cropped) deleteMultipleFiles(req.files.media_cropped.map((f) => f.path), "updateMediaCollection: collection not found (media_cropped)");
+        if (req.files.featured_image) deleteFile(req.files.featured_image[0].path, "updateMediaCollection: collection not found (featured)");
       }
-      return res.status(404).json({ error: "Koleksi media tidak ditemukan." });
+      return res.status(404).json({ error: "Media collection not found." });
     }
+    const oldFeaturedImagePath = oldCollection[0].featured_image;
 
     if (title !== undefined) {
       updateFields.push("title = ?");
@@ -359,6 +347,23 @@ exports.updateMediaCollection = async (req, res) => {
       updateValues.push(category_id || null);
     }
 
+    if (newFeaturedImage) {
+      const newFeaturedImagePath = `/uploads/media/${newFeaturedImage.filename}`;
+      updateFields.push("featured_image = ?");
+      updateValues.push(newFeaturedImagePath);
+      if (oldFeaturedImagePath) {
+        deleteFile(oldFeaturedImagePath, "updateMediaCollection: old featured image replaced");
+      }
+      responseBody.new_featured_image = newFeaturedImagePath;
+    } else if (clear_featured_image === "true" || clear_featured_image === true) {
+      updateFields.push("featured_image = ?");
+      updateValues.push(null);
+      if (oldFeaturedImagePath) {
+        deleteFile(oldFeaturedImagePath, "updateMediaCollection: clear featured image");
+      }
+      responseBody.featured_image_cleared = true;
+    }
+
     updateFields.push("updated_at = NOW()");
 
     if (
@@ -367,18 +372,14 @@ exports.updateMediaCollection = async (req, res) => {
       (!uploadedFiles || uploadedFiles.length === 0) &&
       !updated_sort_order
     ) {
-      return res
-        .status(400)
-        .json({ error: "Tidak ada data yang disediakan untuk diperbarui." });
+      return res.status(400).json({ error: "No data provided for update." });
     }
 
     connection = await db.getConnection();
     await connection.beginTransaction();
 
     if (updateFields.length > 0) {
-      const query = `UPDATE media_collection SET ${updateFields.join(
-        ", "
-      )} WHERE id = ?`;
+      const query = `UPDATE media_collection SET ${updateFields.join(", ")} WHERE id = ?`;
       updateValues.push(id);
       await connection.query(query, updateValues);
     }
@@ -389,17 +390,12 @@ exports.updateMediaCollection = async (req, res) => {
       if (idsToDelete.length > 0) {
         const placeholders = idsToDelete.map(() => "?").join(",");
         const [filesToDelete] = await connection.query(
-          `SELECT url, cropped_url FROM media WHERE id IN (${placeholders}) AND media_collection_id = ?`,
-          [...idsToDelete, id]
+          "SELECT url FROM media WHERE id IN (?) AND media_collection_id = ?",
+          [idsToDelete, id]
         );
         if (filesToDelete.length > 0) {
-          const filePathsToDelete = filesToDelete.flatMap((file) =>
-            [file.url, file.cropped_url].filter(Boolean)
-          );
-          deleteMultipleFiles(
-            filePathsToDelete,
-            "updateMediaCollection: delete specific files"
-          );
+          const filePathsToDelete = filesToDelete.map(file => file.url);
+          deleteMultipleFiles(filePathsToDelete, "updateMediaCollection: delete specific files");
 
           await connection.query(
             `DELETE FROM media WHERE id IN (${placeholders}) AND media_collection_id = ?`,
@@ -443,27 +439,22 @@ exports.updateMediaCollection = async (req, res) => {
       );
       let nextSortOrder = maxSortOrderResult[0].max_order + 1;
       const fileValues = uploadedFiles.map((file, index) => {
-        const croppedFile = croppedFiles[index] || null;
         const originalUrl = `/uploads/media/${file.filename}`;
-        const croppedUrl = croppedFile
-          ? `/uploads/media/${croppedFile.filename}`
-          : null;
         return [
           id,
           originalUrl,
-          croppedUrl,
           file.originalname,
           nextSortOrder + index,
         ];
       });
 
       await connection.query(
-        "INSERT INTO media (media_collection_id, url, cropped_url, file_name, sort_order) VALUES ?",
+        "INSERT INTO media (media_collection_id, url, file_name, sort_order) VALUES ?",
         [fileValues]
       );
 
       const [insertedFiles] = await connection.query(
-        "SELECT id, file_name, url, cropped_url, sort_order FROM media WHERE media_collection_id = ? AND url IN (?)",
+        "SELECT id, file_name, url, sort_order FROM media WHERE media_collection_id = ? AND url IN (?)",
         [id, fileValues.map((v) => v[1])]
       );
       newFiles = insertedFiles;
@@ -471,17 +462,17 @@ exports.updateMediaCollection = async (req, res) => {
 
     await connection.commit();
     const [updatedCollection] = await db.query(
-      `SELECT mc.id, mc.title, mc.caption, mc.created_at, mc.uploaded_by, mc.updated_at, u.name AS uploaded_by_name, mc_cat.name AS category_name, mc_cat.id AS category_id FROM media_collection mc LEFT JOIN users u ON mc.uploaded_by = u.id LEFT JOIN media_categories mc_cat ON mc.category_id = mc_cat.id WHERE mc.id = ?`,
+      `SELECT mc.id, mc.title, mc.caption, mc.created_at, mc.uploaded_by, mc.updated_at, mc.featured_image, u.name AS uploaded_by_name, mc_cat.name AS category_name, mc_cat.id AS category_id FROM media_collection mc LEFT JOIN users u ON mc.uploaded_by = u.id LEFT JOIN media_categories mc_cat ON mc.category_id = mc_cat.id WHERE mc.id = ?`,
       [id]
     );
 
     const [finalFiles] = await db.query(
-      "SELECT id, file_name, url, cropped_url, sort_order FROM media WHERE media_collection_id = ? ORDER BY sort_order",
+      "SELECT id, file_name, url, sort_order FROM media WHERE media_collection_id = ? ORDER BY sort_order",
       [id]
     );
 
     res.status(200).json({
-      message: "Koleksi media berhasil diperbarui.",
+      message: "Media collection successfully updated.",
       ...updatedCollection[0],
       files: finalFiles,
       deleted_file_ids: deletedFileIds,
@@ -492,24 +483,21 @@ exports.updateMediaCollection = async (req, res) => {
     if (connection) await connection.rollback();
     if (req.files) {
       if (req.files.media)
-        deleteMultipleFiles(
-          req.files.media.map((f) => f.path),
-          "updateMediaCollection: DB error (media)"
-        );
-      if (req.files.media_cropped)
-        deleteMultipleFiles(
-          req.files.media_cropped.map((f) => f.path),
-          "updateMediaCollection: DB error (media_cropped)"
-        );
+        deleteMultipleFiles(req.files.media.map((f) => f.path), "updateMediaCollection: DB error (media)");
+      // Removed:
+      // if (req.files.media_cropped)
+      //   deleteMultipleFiles(req.files.media_cropped.map((f) => f.path), "updateMediaCollection: DB error (media_cropped)");
+      if (req.files.featured_image)
+        deleteFile(req.files.featured_image[0].path, "updateMediaCollection: DB error (featured)");
     }
     if (error.code === "ER_NO_REFERENCED_ROW_2") {
       res.status(400).json({
-        error: "ID kategori tidak valid.",
+        error: "Invalid category ID.",
         details: error.message,
       });
     } else {
       res.status(500).json({
-        error: "Gagal memperbarui koleksi media.",
+        error: "Failed to update media collection.",
         details: error.message,
       });
     }
@@ -550,7 +538,7 @@ exports.getMediaCollectionsByCategory = async (req, res) => {
       whereClauses.push("mc.category_id = ?");
       queryParams.push(parseInt(categoryId));
     } else {
-      return res.status(400).json({ error: "ID kategori tidak valid." });
+      return res.status(400).json({ error: "Invalid category ID." });
     }
 
     const whereSql =
@@ -573,7 +561,7 @@ exports.getMediaCollectionsByCategory = async (req, res) => {
       }
     }
     const [collections] = await db.query(
-      `SELECT mc.id, mc.title, mc.caption, mc.created_at, mc.uploaded_by, mc.updated_at, u.name AS uploaded_by_name, mc_cat.name AS category_name,mc_cat.id AS category_id FROM media_collection mc LEFT JOIN users u ON mc.uploaded_by = u.id LEFT JOIN media_categories mc_cat ON mc.category_id = mc_cat.id ${whereSql} ${orderByClause} LIMIT ? OFFSET ?`,
+      `SELECT mc.id, mc.title, mc.caption, mc.created_at, mc.uploaded_by, mc.updated_at, mc.featured_image, u.name AS uploaded_by_name, mc_cat.name AS category_name,mc_cat.id AS category_id FROM media_collection mc LEFT JOIN users u ON mc.uploaded_by = u.id LEFT JOIN media_categories mc_cat ON mc.category_id = mc_cat.id ${whereSql} ${orderByClause} LIMIT ? OFFSET ?`,
       [...queryParams, parsedPageSize, offset]
     );
 
@@ -588,7 +576,7 @@ exports.getMediaCollectionsByCategory = async (req, res) => {
 
     if (collectionIds.length > 0) {
       const [mediaFiles] = await db.query(
-        `SELECT id, media_collection_id, url, cropped_url FROM media WHERE media_collection_id IN (?)`,
+        "SELECT id, media_collection_id, url FROM media WHERE media_collection_id IN (?)",
         [collectionIds]
       );
       allMediaFiles = mediaFiles;
@@ -617,7 +605,7 @@ exports.getMediaCollectionsByCategory = async (req, res) => {
   } catch (error) {
     console.error("Error fetching media collections by category:", error);
     res.status(500).json({
-      error: "Gagal mengambil daftar koleksi media berdasarkan kategori.",
+      error: "Failed to retrieve media collection list by category.",
       details: error.message,
     });
   }
@@ -626,7 +614,7 @@ exports.getMediaCollectionsByCategory = async (req, res) => {
 exports.getMediaCategories = async (req, res) => {
   try {
     const [categories] = await db.query(
-      `SELECT id, name AS category_name FROM media_categories`
+      "SELECT id, name AS category_name FROM media_categories"
     );
 
     res.status(200).json({
@@ -637,7 +625,7 @@ exports.getMediaCategories = async (req, res) => {
     console.error("Error fetching media categories:", error);
     res.status(500).json({
       success: false,
-      message: "Gagal mengambil daftar kategori media.",
+      message: "Failed to retrieve media category list.",
       error: error.message,
     });
   }

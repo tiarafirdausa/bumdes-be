@@ -113,6 +113,7 @@ exports.mediaUpload = multer({
     limits: { fileSize: 10 * 1024 * 1024 },
 }).fields([
     { name: 'media', maxCount: 10 },
+    { name: 'featured_image', maxCount: 1 },
     { name: 'media_cropped', maxCount: 1 } 
 ]);
 
