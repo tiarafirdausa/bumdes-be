@@ -45,24 +45,27 @@ exports.createMediaCollection = async (req, res) => {
     const { title, caption, category_id, uploaded_by } = req.body;
     const uploadedFiles = req.files.media || [];
     const featuredImageFile = req.files.featured_image ? req.files.featured_image[0] : null;
+    const originalFeaturedImageFile = req.files.original_featured_image ? req.files.original_featured_image[0] : null;
 
     if (!uploadedFiles.length && !featuredImageFile) {
       return res.status(400).json({ error: "At least one media file or featured image must be uploaded." });
     }
     if (!uploaded_by) {
       if (featuredImageFile) deleteFile(featuredImageFile.path, "createMediaCollection: missing uploaded_by (featured)");
+      if (originalFeaturedImageFile) deleteFile(originalFeaturedImageFile.path, "createMediaCollection: missing uploaded_by (original featured)");
       deleteMultipleFiles(uploadedFiles.map((f) => f.path), "createMediaCollection: missing uploaded_by");
       return res.status(400).json({ error: "Uploader ID is required." });
     }
 
     const featuredImageUrl = featuredImageFile ? `/uploads/media/${featuredImageFile.filename}` : null;
+    const originalFeaturedImageUrl = originalFeaturedImageFile ? `/uploads/media/${originalFeaturedImageFile.filename}` : null;
 
     connection = await db.getConnection();
     await connection.beginTransaction();
 
     const [collectionResult] = await connection.query(
-      "INSERT INTO media_collection (title, caption, category_id, uploaded_by, featured_image, created_at) VALUES (?, ?, ?, ?, ?, NOW())",
-      [title || null, caption || null, category_id || null, uploaded_by, featuredImageUrl]
+      "INSERT INTO media_collection (title, caption, category_id, uploaded_by, featured_image, original_featured_image, created_at) VALUES (?, ?, ?, ?, ?, ?, NOW())",
+      [title || null, caption || null, category_id || null, uploaded_by, featuredImageUrl, originalFeaturedImageUrl] 
     );
     const mediaCollectionId = collectionResult.insertId;
 
@@ -85,7 +88,7 @@ exports.createMediaCollection = async (req, res) => {
       [mediaCollectionId]
     );
     const [newCollection] = await db.query(
-      "SELECT title, caption, category_id, featured_image FROM media_collection WHERE id = ?",
+      "SELECT title, caption, category_id, featured_image, original_featured_image FROM media_collection WHERE id = ?",
       [mediaCollectionId]
     );
 
@@ -100,10 +103,9 @@ exports.createMediaCollection = async (req, res) => {
     console.error("Error creating media collection:", error);
     if (connection) await connection.rollback();
     if (req.files) {
-      if (req.files.featured_image)
-        deleteFile(req.files.featured_image[0].path, "createMediaCollection: DB error (featured)");
-      if (req.files.media)
-        deleteMultipleFiles(req.files.media.map((f) => f.path), "createMediaCollection: DB error (media)");
+      if (req.files.featured_image) deleteFile(req.files.featured_image[0].path, "createMediaCollection: DB error (featured)");
+      if (req.files.original_featured_image) deleteFile(req.files.original_featured_image[0].path, "createMediaCollection: DB error (original featured)");
+      if (req.files.media) deleteMultipleFiles(req.files.media.map((f) => f.path), "createMediaCollection: DB error (media)");
     }
     res.status(500).json({ error: "Failed to create media collection.", details: error.message });
   } finally {
@@ -164,7 +166,7 @@ exports.getMediaCollections = async (req, res) => {
       }
     }
     const [collections] = await db.query(
-      `SELECT mc.id, mc.title, mc.caption, mc.created_at, mc.uploaded_by, mc.updated_at, mc.featured_image, u.name AS uploaded_by_name, mc_cat.name AS category_name,mc_cat.id AS category_id FROM media_collection mc LEFT JOIN users u ON mc.uploaded_by = u.id LEFT JOIN media_categories mc_cat ON mc.category_id = mc_cat.id ${whereSql} ${orderByClause} LIMIT ? OFFSET ?`,
+      `SELECT mc.id, mc.title, mc.caption, mc.created_at, mc.uploaded_by, mc.updated_at, mc.featured_image, mc.original_featured_image, u.name AS uploaded_by_name, mc_cat.name AS category_name,mc_cat.id AS category_id FROM media_collection mc LEFT JOIN users u ON mc.uploaded_by = u.id LEFT JOIN media_categories mc_cat ON mc.category_id = mc_cat.id ${whereSql} ${orderByClause} LIMIT ? OFFSET ?`,
       [...queryParams, parsedPageSize, offset]
     );
 
@@ -219,7 +221,7 @@ exports.getMediaCollectionById = async (req, res) => {
   try {
     const { id } = req.params;
     const [collection] = await db.query(
-      `SELECT mc.id, mc.title, mc.caption, mc.created_at, mc.uploaded_by, mc.featured_image, u.name AS uploaded_by_name, mc_cat.name AS category_name, mc_cat.id AS category_id FROM media_collection mc LEFT JOIN users u ON mc.uploaded_by = u.id LEFT JOIN media_categories mc_cat ON mc.category_id = mc_cat.id WHERE mc.id = ?`,
+      `SELECT mc.id, mc.title, mc.caption, mc.created_at, mc.uploaded_by, mc.featured_image, mc.original_featured_image, u.name AS uploaded_by_name, mc_cat.name AS category_name, mc_cat.id AS category_id FROM media_collection mc LEFT JOIN users u ON mc.uploaded_by = u.id LEFT JOIN media_categories mc_cat ON mc.category_id = mc_cat.id WHERE mc.id = ?`,
       [id]
     );
 
@@ -262,12 +264,17 @@ exports.deleteMediaCollection = async (req, res) => {
       [f.url]
     );
 
-    const [featuredImage] = await connection.query(
-      "SELECT featured_image FROM media_collection WHERE id = ?",
+    const [featuredImages] = await connection.query(
+      "SELECT featured_image, original_featured_image FROM media_collection WHERE id = ?",
       [id]
     );
-    if (featuredImage.length > 0 && featuredImage[0].featured_image) {
-      filePathsToDelete.push(featuredImage[0].featured_image);
+    if (featuredImages.length > 0) {
+      if (featuredImages[0].featured_image) {
+        filePathsToDelete.push(featuredImages[0].featured_image);
+      }
+      if (featuredImages[0].original_featured_image) {
+        filePathsToDelete.push(featuredImages[0].original_featured_image); 
+      }
     }
 
     await connection.query("DELETE FROM media WHERE media_collection_id = ?", [id]);
@@ -310,6 +317,7 @@ exports.updateMediaCollection = async (req, res) => {
     } = req.body;
     const uploadedFiles = req.files.media || [];
     const newFeaturedImage = req.files.featured_image ? req.files.featured_image[0] : null;
+    const newOriginalFeaturedImage = req.files.original_featured_image ? req.files.original_featured_image[0] : null; 
 
     if (!id) {
       return res.status(400).json({ error: "Invalid media collection ID." });
@@ -320,19 +328,20 @@ exports.updateMediaCollection = async (req, res) => {
     let responseBody = {};
 
     const [oldCollection] = await db.query(
-      "SELECT featured_image FROM media_collection WHERE id = ?",
+      "SELECT featured_image, original_featured_image FROM media_collection WHERE id = ?",
       [id]
     );
 
     if (oldCollection.length === 0) {
       if (req.files) {
         if (req.files.media) deleteMultipleFiles(req.files.media.map((f) => f.path), "updateMediaCollection: collection not found (media)");
-        // Removed: if (req.files.media_cropped) deleteMultipleFiles(req.files.media_cropped.map((f) => f.path), "updateMediaCollection: collection not found (media_cropped)");
         if (req.files.featured_image) deleteFile(req.files.featured_image[0].path, "updateMediaCollection: collection not found (featured)");
+        if (req.files.original_featured_image) deleteFile(req.files.original_featured_image[0].path, "updateMediaCollection: collection not found (original featured)"); // Hapus file asli baru jika ada
       }
       return res.status(404).json({ error: "Media collection not found." });
     }
     const oldFeaturedImagePath = oldCollection[0].featured_image;
+    const oldOriginalFeaturedImagePath = oldCollection[0].original_featured_image;
 
     if (title !== undefined) {
       updateFields.push("title = ?");
@@ -349,17 +358,27 @@ exports.updateMediaCollection = async (req, res) => {
 
     if (newFeaturedImage) {
       const newFeaturedImagePath = `/uploads/media/${newFeaturedImage.filename}`;
-      updateFields.push("featured_image = ?");
-      updateValues.push(newFeaturedImagePath);
+      const newOriginalFeaturedImagePathValue = newOriginalFeaturedImage ? `/uploads/media/${newOriginalFeaturedImage.filename}` : null;
+      
+      updateFields.push("featured_image = ?, original_featured_image = ?");
+      updateValues.push(newFeaturedImagePath, newOriginalFeaturedImagePathValue);
+      
       if (oldFeaturedImagePath) {
         deleteFile(oldFeaturedImagePath, "updateMediaCollection: old featured image replaced");
       }
+      if (oldOriginalFeaturedImagePath) {
+        deleteFile(oldOriginalFeaturedImagePath, "updateMediaCollection: old original featured image replaced");
+      }
       responseBody.new_featured_image = newFeaturedImagePath;
+      responseBody.new_original_featured_image = newOriginalFeaturedImagePathValue;
     } else if (clear_featured_image === "true" || clear_featured_image === true) {
-      updateFields.push("featured_image = ?");
-      updateValues.push(null);
+      updateFields.push("featured_image = ?, original_featured_image = ?");
+      updateValues.push(null, null);
       if (oldFeaturedImagePath) {
         deleteFile(oldFeaturedImagePath, "updateMediaCollection: clear featured image");
+      }
+      if (oldOriginalFeaturedImagePath) {
+        deleteFile(oldOriginalFeaturedImagePath, "updateMediaCollection: clear original featured image");
       }
       responseBody.featured_image_cleared = true;
     }
@@ -462,7 +481,7 @@ exports.updateMediaCollection = async (req, res) => {
 
     await connection.commit();
     const [updatedCollection] = await db.query(
-      `SELECT mc.id, mc.title, mc.caption, mc.created_at, mc.uploaded_by, mc.updated_at, mc.featured_image, u.name AS uploaded_by_name, mc_cat.name AS category_name, mc_cat.id AS category_id FROM media_collection mc LEFT JOIN users u ON mc.uploaded_by = u.id LEFT JOIN media_categories mc_cat ON mc.category_id = mc_cat.id WHERE mc.id = ?`,
+      `SELECT mc.id, mc.title, mc.caption, mc.created_at, mc.uploaded_by, mc.updated_at, mc.featured_image, mc.original_featured_image, u.name AS uploaded_by_name, mc_cat.name AS category_name, mc_cat.id AS category_id FROM media_collection mc LEFT JOIN users u ON mc.uploaded_by = u.id LEFT JOIN media_categories mc_cat ON mc.category_id = mc_cat.id WHERE mc.id = ?`,
       [id]
     );
 
@@ -484,11 +503,10 @@ exports.updateMediaCollection = async (req, res) => {
     if (req.files) {
       if (req.files.media)
         deleteMultipleFiles(req.files.media.map((f) => f.path), "updateMediaCollection: DB error (media)");
-      // Removed:
-      // if (req.files.media_cropped)
-      //   deleteMultipleFiles(req.files.media_cropped.map((f) => f.path), "updateMediaCollection: DB error (media_cropped)");
       if (req.files.featured_image)
         deleteFile(req.files.featured_image[0].path, "updateMediaCollection: DB error (featured)");
+      if (req.files.original_featured_image)
+        deleteFile(req.files.original_featured_image[0].path, "updateMediaCollection: DB error (original featured)");
     }
     if (error.code === "ER_NO_REFERENCED_ROW_2") {
       res.status(400).json({
@@ -561,7 +579,7 @@ exports.getMediaCollectionsByCategory = async (req, res) => {
       }
     }
     const [collections] = await db.query(
-      `SELECT mc.id, mc.title, mc.caption, mc.created_at, mc.uploaded_by, mc.updated_at, mc.featured_image, u.name AS uploaded_by_name, mc_cat.name AS category_name,mc_cat.id AS category_id FROM media_collection mc LEFT JOIN users u ON mc.uploaded_by = u.id LEFT JOIN media_categories mc_cat ON mc.category_id = mc_cat.id ${whereSql} ${orderByClause} LIMIT ? OFFSET ?`,
+      `SELECT mc.id, mc.title, mc.caption, mc.created_at, mc.uploaded_by, mc.updated_at, mc.featured_image, mc.original_featured_image, u.name AS uploaded_by_name, mc_cat.name AS category_name,mc_cat.id AS category_id FROM media_collection mc LEFT JOIN users u ON mc.uploaded_by = u.id LEFT JOIN media_categories mc_cat ON mc.category_id = mc_cat.id ${whereSql} ${orderByClause} LIMIT ? OFFSET ?`,
       [...queryParams, parsedPageSize, offset]
     );
 

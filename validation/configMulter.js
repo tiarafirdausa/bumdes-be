@@ -114,7 +114,7 @@ exports.mediaUpload = multer({
 }).fields([
     { name: 'media', maxCount: 10 },
     { name: 'featured_image', maxCount: 1 },
-    { name: 'media_cropped', maxCount: 1 } 
+    { name: 'original_featured_image', maxCount: 1 }
 ]);
 
 exports.bannerImageUpload = multer({
