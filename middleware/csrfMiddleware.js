@@ -2,6 +2,16 @@
 const crypto = require("crypto");
 
 const generateCsrfToken = (req, res, next) => {
+  const csrfExcludedRoutes = [
+    "/api/auth/login",
+    "/api/auth/logout",
+    "/api/auth/refresh-token"
+  ];
+
+  if (csrfExcludedRoutes.includes(req.path)) {
+    return next();
+  }
+
   let csrfTokenFromCookie = req.cookies["_csrf"];
   let csrfTokenFromHeader = req.headers["x-csrf-token"];
 

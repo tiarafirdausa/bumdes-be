@@ -1,4 +1,3 @@
-// backend/controllers/authController.js
 const db = require("../models/db");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
@@ -248,5 +247,43 @@ exports.resetPassword = async (req, res) => {
     } catch (error) {
         console.error("Error in resetPassword:", error);
         res.status(500).json({ error: 'Gagal mereset password.', details: error.message });
+    }
+};
+
+exports.refreshToken = async (req, res) => {
+    const token = req.cookies.token || (req.headers.authorization && req.headers.authorization.startsWith("Bearer") ? req.headers.authorization.split(" ")[1] : null);
+
+    if (!token) {
+        return res.status(401).json({ error: "Token tidak ditemukan, sesi berakhir." });
+    }
+
+    try {
+        // Verifikasi token dengan opsi ignoreExpiration: true
+        const decoded = jwt.verify(token, JWT_SECRET, { ignoreExpiration: true });
+        const nowInSeconds = Date.now() / 1000;
+
+        // Periksa apakah token sudah kedaluwarsa melebihi waktu yang diizinkan (mis. 5 menit)
+        const expiredTolerance = 300; // 5 menit dalam detik
+        if (decoded.exp && (decoded.exp + expiredTolerance) < nowInSeconds) {
+            return res.status(401).json({ error: "Sesi telah berakhir, silakan login kembali." });
+        }
+
+        const [users] = await db.query(
+            "SELECT id, name, email, username, role, foto, status FROM users WHERE id = ?",
+            [decoded.id]
+        );
+
+        if (users.length === 0) {
+            return res.status(401).json({ error: "Pengguna tidak ditemukan." });
+        }
+
+        generateTokenAndSetCookie(users[0], 200, res);
+
+    } catch (error) {
+        console.error("Error refreshing token:", error);
+        res.status(401).json({
+            error: "Token tidak valid atau telah kedaluwarsa sepenuhnya.",
+            details: error.message,
+        });
     }
 };

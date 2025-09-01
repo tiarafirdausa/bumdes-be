@@ -23,6 +23,7 @@ const tagRoute = require("./routes/tagRoute");
 const modulRoute = require("./routes/modulRoute");
 const bannerRoute = require("./routes/bannerRoute")
 const linkRoutes = require("./routes/linkRoute");
+const authController = require("./controllers/authController");
 
 const generateCsrfToken = require("./middleware/csrfMiddleware");
 
@@ -58,6 +59,7 @@ app.use("/uploads", express.static(path.join(__dirname, "public", "uploads")));
 app.get("/csrf-token", (req, res) => {
   res.json({ csrfToken: req.csrfToken });
 });
+app.post("/api/auth/refresh-token", authController.refreshToken);
 
 app.use("/api", authRoute);
 app.use("/api/users", userRoute);
