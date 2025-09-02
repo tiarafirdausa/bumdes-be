@@ -732,6 +732,11 @@ exports.deletePage = async (req, res) => {
       (img) => img.image_path
     );
 
+    await connection.query(
+      "DELETE FROM menu_items WHERE type = 'page' AND reference_id = ?",
+      [id]
+    );
+
     const [result] = await connection.query("DELETE FROM pages WHERE id = ?", [
       id,
     ]);
@@ -753,7 +758,7 @@ exports.deletePage = async (req, res) => {
       "deletePage: gallery images"
     );
 
-    res.status(200).json({ message: "Halaman berhasil dihapus." });
+    res.status(200).json({ message: "Halaman dan item menu terkait berhasil dihapus." });
   } catch (error) {
     console.error("Error deleting page:", error);
     if (connection) await connection.rollback();

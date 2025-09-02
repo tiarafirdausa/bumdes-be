@@ -120,6 +120,7 @@ exports.getMediaCollections = async (req, res) => {
       pageSize = 10,
       query: search = "",
       categoryId,
+      category: categorySlug,
       authorId,
     } = req.query;
     const sortKey = req.query["sort[key]"];
@@ -139,6 +140,11 @@ exports.getMediaCollections = async (req, res) => {
     if (categoryId && !isNaN(parseInt(categoryId))) {
       whereClauses.push("mc.category_id = ?");
       queryParams.push(parseInt(categoryId));
+    }
+
+    if (categorySlug) {
+      whereClauses.push("mc_cat.slug = ?");
+      queryParams.push(categorySlug);
     }
 
     if (authorId && !isNaN(parseInt(authorId))) {
@@ -166,12 +172,12 @@ exports.getMediaCollections = async (req, res) => {
       }
     }
     const [collections] = await db.query(
-      `SELECT mc.id, mc.title, mc.caption, mc.created_at, mc.uploaded_by, mc.updated_at, mc.featured_image, mc.original_featured_image, u.name AS uploaded_by_name, mc_cat.name AS category_name,mc_cat.id AS category_id FROM media_collection mc LEFT JOIN users u ON mc.uploaded_by = u.id LEFT JOIN media_categories mc_cat ON mc.category_id = mc_cat.id ${whereSql} ${orderByClause} LIMIT ? OFFSET ?`,
+      `SELECT mc.id, mc.title, mc.caption, mc.created_at, mc.uploaded_by, mc.updated_at, mc.featured_image, mc.original_featured_image, u.name AS uploaded_by_name, mc_cat.name AS category_name, mc_cat.id AS category_id FROM media_collection mc LEFT JOIN users u ON mc.uploaded_by = u.id LEFT JOIN media_categories mc_cat ON mc.category_id = mc_cat.id ${whereSql} ${orderByClause} LIMIT ? OFFSET ?`,
       [...queryParams, parsedPageSize, offset]
     );
 
     const [totalResults] = await db.query(
-      `SELECT COUNT(mc.id) AS total FROM media_collection mc LEFT JOIN users u ON mc.uploaded_by = u.id ${whereSql}`,
+      `SELECT COUNT(mc.id) AS total FROM media_collection mc LEFT JOIN users u ON mc.uploaded_by = u.id LEFT JOIN media_categories mc_cat ON mc.category_id = mc_cat.id ${whereSql}`,
       queryParams
     );
     const totalItems = totalResults[0].total;

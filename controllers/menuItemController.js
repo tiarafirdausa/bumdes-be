@@ -49,6 +49,8 @@ const getReferenceSlugOrTitle = async (type, referenceId) => {
       let finalSlug = rows[0][slugColumn];
       if (type === "media") {
         finalSlug = `media/${finalSlug}`;
+      }  else if (type === "media_category") {
+        finalSlug = `media-kategori/${finalSlug}`; 
       } else if (type === "link") {
         finalSlug = finalSlug || `/link/${referenceId}`;
       }
@@ -128,7 +130,6 @@ exports.createMenuItem = async (req, res) => {
 
     let finalUrl = url;
 
-    // Logika baru untuk menentukan URL berdasarkan tipe
     if (type === "custom") {
       if (!url) {
         return res
@@ -137,13 +138,12 @@ exports.createMenuItem = async (req, res) => {
       }
       finalUrl = url;
     } else if (type === "post" && !reference_id) {
-      finalUrl = "/post"; // URL untuk list all posts
+      finalUrl = "/post"; 
     } else if (type === "media" && !reference_id) {
-      finalUrl = "/media"; // URL untuk list all media
+      finalUrl = "/media"; 
     } else if (type === "link" && !reference_id) {
-      finalUrl = "/link"; // URL untuk list all links
+      finalUrl = "/link";
     } else if (reference_id) {
-      // Untuk tipe lain yang merujuk ke item spesifik
       const refData = await getReferenceSlugOrTitle(type, reference_id);
       if (refData) {
         finalUrl = `/${refData.slug}`;
@@ -155,7 +155,6 @@ exports.createMenuItem = async (req, res) => {
           });
       }
     } else {
-      // Jika tipe adalah 'category', 'page', 'media_category' tetapi reference_id kosong
       return res
         .status(400)
         .json({ error: `ID referensi wajib diisi untuk tipe menu '${type}'.` });
@@ -278,7 +277,6 @@ exports.updateMenuItem = async (req, res) => {
     let newUrl = url !== undefined ? url : oldData.url;
     let newTitle = title !== undefined ? title : oldData.title;
 
-    // Cek jika tipe atau referensi berubah untuk memperbarui URL
     if (type !== undefined || reference_id !== undefined) {
       if (newType === "custom") {
         if (!newUrl) {
@@ -288,13 +286,12 @@ exports.updateMenuItem = async (req, res) => {
         }
         newUrl = newUrl;
       } else if (newType === "post" && !newReferenceId) {
-        newUrl = "/post"; // URL untuk list all posts
+        newUrl = "/post";
       } else if (newType === "media" && !newReferenceId) {
-        newUrl = "/media"; // URL untuk list all media
+        newUrl = "/media";
       } else if (newType === "link" && !newReferenceId) {
         newUrl = "/link";
       } else if (newReferenceId) {
-        // Untuk tipe lain yang merujuk ke item spesifik
         const refData = await getReferenceSlugOrTitle(newType, newReferenceId);
         if (refData) {
           newUrl = `/${refData.slug}`;
@@ -313,7 +310,6 @@ exports.updateMenuItem = async (req, res) => {
           });
       }
     } else {
-      // Jika tidak ada perubahan tipe atau referensi, gunakan URL yang ada
       newUrl = oldData.url;
     }
 
@@ -465,35 +461,45 @@ exports.getMenuItemById = async (req, res) => {
 
 // Fungsi untuk menghapus item menu
 exports.deleteMenuItem = async (req, res) => {
+  let connection; 
   try {
     const { id } = req.params;
 
-    // Periksa apakah ada sub-item yang merujuk ke item ini sebagai parent
-    const [childItems] = await db.query(
-      "SELECT id FROM menu_items WHERE parent_id = ?",
-      [id]
-    );
-    if (childItems.length > 0) {
-      // Jika ada, set parent_id mereka menjadi NULL
-      await db.query(
-        "UPDATE menu_items SET parent_id = NULL WHERE parent_id = ?",
-        [id]
-      );
-    }
+    connection = await db.getConnection();
+    await connection.beginTransaction();
 
-    const [result] = await db.query("DELETE FROM menu_items WHERE id = ?", [
-      id,
-    ]);
-
-    if (result.affectedRows === 0) {
+    const [itemExists] = await connection.query("SELECT id FROM menu_items WHERE id = ?", [id]);
+    if (itemExists.length === 0) {
+      await connection.rollback();
+      connection.release();
       return res.status(404).json({ error: "Item menu tidak ditemukan" });
     }
 
+    await connection.query(
+      "UPDATE menu_items SET parent_id = NULL WHERE parent_id = ?",
+      [id]
+    );
+
+    await connection.query("DELETE FROM menu_items WHERE id = ?", [id]);
+
+    await connection.commit();
+
     res.status(200).json({ message: "Item menu berhasil dihapus." });
+
   } catch (error) {
     console.error("Error deleting menu item:", error);
+
+    if (connection) {
+      await connection.rollback();
+    }
+
     res
       .status(500)
       .json({ error: "Gagal menghapus item menu", details: error.message });
+      
+  } finally {
+    if (connection) {
+      connection.release();
+    }
   }
 };
