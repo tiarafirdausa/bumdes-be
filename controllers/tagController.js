@@ -21,7 +21,8 @@ exports.createTag = async (req, res) => {
             slug = name
                 .toLowerCase()
                 .replace(/\s+/g, "-")
-                .replace(/[^a-z0-9-]/g, "");
+                .replace(/[^a-z0-9-]/g, "")
+                .replace(/-+/g, "-");
         }
 
         const [existingTagBySlug] = await db.query(

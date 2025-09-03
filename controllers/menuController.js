@@ -14,7 +14,8 @@ exports.createMenu = async (req, res) => {
       finalSlug = name
         .toLowerCase()
         .replace(/\s+/g, "-")
-        .replace(/[^a-z0-9-]/g, "");
+        .replace(/[^a-z0-9-]/g, "")
+        .replace(/-+/g, "-");
     }
 
     const [existingMenuBySlug] = await db.query(
@@ -59,7 +60,7 @@ exports.getAllMenus = async (req, res) => {
         } = req.query;
 
         const sortKey = req.query['sort[key]'];
-        const sortOrder = req.query['sort[order]'];
+        const sortOrder = req.query['sort[order]'];
 
 
         let sql = "SELECT id, name, slug, created_at, updated_at FROM menus";
@@ -77,16 +78,16 @@ exports.getAllMenus = async (req, res) => {
         }
 
         if (sortKey && sortOrder) {
-            const order = sortOrder.toUpperCase() === 'DESC' ? 'DESC' : 'ASC';
-            const allowedSortKeys = ['name', 'slug', 'created_at', 'updated_at'];
-            if (allowedSortKeys.includes(sortKey)) {
-                sql += ` ORDER BY ${sortKey} ${order}`;
-            } else {
-                sql += " ORDER BY name ASC";
-            }
-        } else {
-            sql += " ORDER BY name ASC";
-        }
+            const order = sortOrder.toUpperCase() === 'DESC' ? 'DESC' : 'ASC';
+            const allowedSortKeys = ['name', 'slug', 'created_at', 'updated_at'];
+            if (allowedSortKeys.includes(sortKey)) {
+                sql += ` ORDER BY ${sortKey} ${order}`;
+            } else {
+                sql += " ORDER BY name ASC";
+            }
+        } else {
+            sql += " ORDER BY name ASC";
+        }
         
         const offset = (parseInt(pageIndex) - 1) * parseInt(pageSize);
         sql += " LIMIT ? OFFSET ?";

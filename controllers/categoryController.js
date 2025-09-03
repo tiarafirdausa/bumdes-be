@@ -24,8 +24,9 @@ exports.createCategory = async (req, res) => {
     if (!slug) {
       slug = name
         .toLowerCase()
-        .replace(/\s+/g, "-")
-        .replace(/[^a-z0-9-]/g, "");
+        .replace(/\s+/g, "-") 
+        .replace(/[^a-z0-9-]/g, "") 
+        .replace(/-+/g, "-");
     }
 
     const [existingCategoryBySlug] = await db.query(
@@ -79,7 +80,7 @@ exports.getCategories = async (req, res) => {
         const { query, pageIndex = 1, pageSize = 10 } = req.query;
 
         const sortKey = req.query['sort[key]'];
-        const sortOrder = req.query['sort[order]'];
+        const sortOrder = req.query['sort[order]'];
 
         let sql = "SELECT id, name, slug, created_at, updated_at FROM categories"; 
         let countSql = "SELECT COUNT(id) AS total FROM categories";
@@ -96,16 +97,16 @@ exports.getCategories = async (req, res) => {
         }
 
         if (sortKey && sortOrder) {
-            const validSortKeys = ['name', 'created_at', 'updated_at', 'slug'];
-            if (validSortKeys.includes(sortKey)) {
-                const order = sortOrder.toUpperCase() === 'DESC' ? 'DESC' : 'ASC';
-                sql += ` ORDER BY ${sortKey} ${order}`;
-            } else {
-                sql += " ORDER BY name ASC";
-            }
-        } else {
-            sql += " ORDER BY name ASC";
-        }
+            const validSortKeys = ['name', 'created_at', 'updated_at', 'slug'];
+            if (validSortKeys.includes(sortKey)) {
+                const order = sortOrder.toUpperCase() === 'DESC' ? 'DESC' : 'ASC';
+                sql += ` ORDER BY ${sortKey} ${order}`;
+            } else {
+                sql += " ORDER BY name ASC";
+            }
+        } else {
+            sql += " ORDER BY name ASC";
+        }
 
         const offset = (parseInt(pageIndex) - 1) * parseInt(pageSize);
         sql += " LIMIT ? OFFSET ?";

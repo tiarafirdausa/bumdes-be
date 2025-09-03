@@ -81,7 +81,8 @@ exports.createPage = async (req, res) => {
       slug = title
         .toLowerCase()
         .replace(/\s+/g, "-")
-        .replace(/[^a-z0-9-]/g, "");
+        .replace(/[^a-z0-9-]/g, "")
+        .replace(/-+/g, "-");
     }
 
     const [existingSlug] = await db.query(

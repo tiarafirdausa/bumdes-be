@@ -461,42 +461,35 @@ exports.getMenuItemById = async (req, res) => {
 
 // Fungsi untuk menghapus item menu
 exports.deleteMenuItem = async (req, res) => {
-  let connection; 
+  let connection;
   try {
     const { id } = req.params;
 
     connection = await db.getConnection();
     await connection.beginTransaction();
 
-    const [itemExists] = await connection.query("SELECT id FROM menu_items WHERE id = ?", [id]);
+    const [itemExists] = await connection.query(
+      "SELECT id FROM menu_items WHERE id = ?",
+      [id]
+    );
+
     if (itemExists.length === 0) {
       await connection.rollback();
       connection.release();
       return res.status(404).json({ error: "Item menu tidak ditemukan" });
     }
 
-    await connection.query(
-      "UPDATE menu_items SET parent_id = NULL WHERE parent_id = ?",
-      [id]
-    );
-
     await connection.query("DELETE FROM menu_items WHERE id = ?", [id]);
 
     await connection.commit();
-
     res.status(200).json({ message: "Item menu berhasil dihapus." });
-
   } catch (error) {
-    console.error("Error deleting menu item:", error);
-
     if (connection) {
       await connection.rollback();
     }
-
     res
       .status(500)
       .json({ error: "Gagal menghapus item menu", details: error.message });
-      
   } finally {
     if (connection) {
       connection.release();

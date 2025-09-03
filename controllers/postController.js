@@ -19,7 +19,7 @@ const deleteFile = (filePath, context) => {
   }
 
   const fullPath = path.join(projectRoot, "public", filePath);
-  
+
   if (fs.existsSync(fullPath)) {
     fs.unlink(fullPath, (unlinkErr) => {
       if (unlinkErr)
@@ -43,15 +43,12 @@ const deleteMultipleFiles = (filePaths, context) => {
 
 const trackPostHit = async (postId) => {
   try {
-    const [post] = await db.query(
-      "SELECT status FROM posts WHERE id = ?",
-      [postId]
-    );
+    const [post] = await db.query("SELECT status FROM posts WHERE id = ?", [
+      postId,
+    ]);
 
     if (post.length > 0 && post[0].status === "published") {
-      await db.query("UPDATE posts SET hits = hits + 1 WHERE id = ?", [
-        postId,
-      ]);
+      await db.query("UPDATE posts SET hits = hits + 1 WHERE id = ?", [postId]);
     }
   } catch (error) {
     console.error("Gagal melacak hit postingan:", error);
@@ -63,7 +60,10 @@ const stripHtmlAndTrim = (text, maxLength = 180) => {
     return null;
   }
   const cleanText = text.replace(/<[^>]*>?/gm, "");
-  return cleanText.substring(0, maxLength) + (cleanText.length > maxLength ? "..." : "");
+  return (
+    cleanText.substring(0, maxLength) +
+    (cleanText.length > maxLength ? "..." : "")
+  );
 };
 
 exports.createPost = async (req, res) => {
@@ -119,7 +119,8 @@ exports.createPost = async (req, res) => {
       slug = title
         .toLowerCase()
         .replace(/\s+/g, "-")
-        .replace(/[^a-z0-9-]/g, "");
+        .replace(/[^a-z0-9-]/g, "")
+        .replace(/-+/g, "-");
     }
 
     const [existingSlug] = await db.query(
@@ -145,14 +146,16 @@ exports.createPost = async (req, res) => {
     }
 
     const finalExcerpt = stripHtmlAndTrim(excerpt || content);
-    const finalMetaDescription = stripHtmlAndTrim(meta_description || finalExcerpt);
+    const finalMetaDescription = stripHtmlAndTrim(
+      meta_description || finalExcerpt
+    );
     const finalMetaTitle =
       meta_title !== undefined && meta_title !== "" ? meta_title : title;
-    
+
     const finalStatus = ["draft", "published", "archived"].includes(status)
       ? status
       : "draft";
-    
+
     const finalPublishedAt =
       finalStatus === "published" && published_at
         ? new Date(published_at)
@@ -419,7 +422,9 @@ exports.updatePost = async (req, res) => {
       updateFields.push("excerpt = ?");
       updateValues.push(finalExcerpt);
 
-      const finalMetaDescription = stripHtmlAndTrim(meta_description || finalExcerpt);
+      const finalMetaDescription = stripHtmlAndTrim(
+        meta_description || finalExcerpt
+      );
       updateFields.push("meta_description = ?");
       updateValues.push(finalMetaDescription);
     } else if (meta_description !== undefined) {
@@ -428,7 +433,7 @@ exports.updatePost = async (req, res) => {
       updateFields.push("meta_description = ?");
       updateValues.push(finalMetaDescription);
     }
-    
+
     if (author_id !== undefined) {
       updateFields.push("author_id = ?");
       updateValues.push(author_id);
@@ -648,14 +653,18 @@ exports.updatePost = async (req, res) => {
 exports.getPosts = async (req, res) => {
   try {
     const {
-      categoryId,
-      tagId,
       status,
       authorId,
       query: search,
       pageIndex = 1,
       pageSize = 10,
     } = req.query;
+
+    // --- Perbaikan Utama ada di sini ---
+    // 1. Mengambil parameter dengan fleksibel, baik 'categoryId' maupun 'categoryId[]'
+    const categoryId = req.query.categoryId || req.query["categoryId[]"];
+    const tagId = req.query.tagId || req.query["tagId[]"];
+    // --- Akhir Perbaikan ---
 
     const sortKey = req.query["sort[key]"];
     const sortOrder = req.query["sort[order]"];
@@ -664,49 +673,62 @@ exports.getPosts = async (req, res) => {
     const parsedPageSize = parseInt(pageSize);
 
     let query = `
-      SELECT
-        p.id, p.title, p.slug, p.excerpt, p.content, p.featured_image,
-        p.meta_title, p.meta_description, p.author_id, p.category_id, p.status, p.published_at,
-        p.created_at, p.updated_at, p.hits,
-        u.name AS author_name,
-        u.foto AS author_photo,
-        c.name AS category_name,
-        c.slug AS category_slug,
-        GROUP_CONCAT(DISTINCT t.id, ':', t.name, ':', t.slug ORDER BY t.name SEPARATOR ';') AS tags_info,
-        GROUP_CONCAT(DISTINCT pgi.id, ':', pgi.image_path, ':', IFNULL(pgi.alt_text, '') ORDER BY pgi.sort_order SEPARATOR ';') AS gallery_images_info,
-        (SELECT COUNT(*) FROM comments WHERE post_id = p.id AND status = 'approved') AS comment_count
-      FROM
-        posts p
-      LEFT JOIN
-        users u ON p.author_id = u.id
-      LEFT JOIN
-        categories c ON p.category_id = c.id
-      LEFT JOIN
-        post_tags pt ON p.id = pt.post_id
-      LEFT JOIN
-        tags t ON pt.tag_id = t.id
-      LEFT JOIN
-        post_gallery_images pgi ON p.id = pgi.post_id
-    `;
+          SELECT
+            p.id, p.title, p.slug, p.excerpt, p.content, p.featured_image,
+            p.meta_title, p.meta_description, p.author_id, p.category_id, p.status, p.published_at,
+            p.created_at, p.updated_at, p.hits,
+            u.name AS author_name,
+            u.foto AS author_photo,
+            c.name AS category_name,
+            c.slug AS category_slug,
+            GROUP_CONCAT(DISTINCT t.id, ':', t.name, ':', t.slug ORDER BY t.name SEPARATOR ';') AS tags_info,
+            GROUP_CONCAT(DISTINCT pgi.id, ':', pgi.image_path, ':', IFNULL(pgi.alt_text, '') ORDER BY pgi.sort_order SEPARATOR ';') AS gallery_images_info,
+            (SELECT COUNT(*) FROM comments WHERE post_id = p.id AND status = 'approved') AS comment_count
+          FROM
+            posts p
+          LEFT JOIN
+            users u ON p.author_id = u.id
+          LEFT JOIN
+            categories c ON p.category_id = c.id
+          LEFT JOIN
+            post_tags pt ON p.id = pt.post_id
+          LEFT JOIN
+            tags t ON pt.tag_id = t.id
+          LEFT JOIN
+            post_gallery_images pgi ON p.id = pgi.post_id
+        `;
 
     const queryParams = [];
     const conditions = [];
 
+    // --- Logika Filter yang Sudah Diperbaiki ---
     if (categoryId) {
-      conditions.push(`p.category_id = ?`);
-      queryParams.push(categoryId);
+      // 2. Mengubah nilai menjadi array agar konsisten
+      const categoryIds = Array.isArray(categoryId) ? categoryId : [categoryId];
+      if (categoryIds.length > 0 && categoryIds[0]) {
+        // 3. Selalu menggunakan 'IN' yang bisa menangani satu atau banyak nilai
+        conditions.push(`p.category_id IN (?)`);
+        queryParams.push(categoryIds);
+      }
     }
     if (tagId) {
-      conditions.push(`pt.tag_id = ?`);
-      queryParams.push(tagId);
+      const tagIds = Array.isArray(tagId) ? tagId : [tagId];
+      if (tagIds.length > 0 && tagIds[0]) {
+        conditions.push(
+          `EXISTS (SELECT 1 FROM post_tags pt_filter WHERE pt_filter.post_id = p.id AND pt_filter.tag_id IN (?))`
+        );
+        queryParams.push(tagIds);
+      }
     }
+    // --- Akhir Logika Filter ---
+
     if (status) {
       conditions.push(`p.status = ?`);
       queryParams.push(status);
     }
-    if (authorId) {
+    if (authorId && !isNaN(parseInt(authorId))) {
       conditions.push(`p.author_id = ?`);
-      queryParams.push(authorId);
+      queryParams.push(parseInt(authorId));
     }
     if (search) {
       conditions.push(
@@ -741,8 +763,7 @@ exports.getPosts = async (req, res) => {
         finalSortBy = "u.name";
       }
       const finalOrder =
-        sortOrder.toUpperCase() === "ASC" ||
-        sortOrder.toUpperCase() === "DESC"
+        sortOrder.toUpperCase() === "ASC" || sortOrder.toUpperCase() === "DESC"
           ? sortOrder.toUpperCase()
           : "DESC";
       orderBySql = `${finalSortBy} ${finalOrder}`;
@@ -766,8 +787,8 @@ exports.getPosts = async (req, res) => {
 
     const totalItems = totalResults[0].total;
 
+    // (Sisa kode untuk memproses hasil query tetap sama)
     const processedPosts = posts.map((post) => {
-      // Create a single category object
       const category = post.category_id
         ? {
             id: post.category_id,
@@ -775,7 +796,6 @@ exports.getPosts = async (req, res) => {
             slug: post.category_slug,
           }
         : null;
-
       const tags = post.tags_info
         ? post.tags_info
             .split(";")
@@ -785,7 +805,6 @@ exports.getPosts = async (req, res) => {
             })
             .filter((tag) => tag.id)
         : [];
-
       const gallery_images = post.gallery_images_info
         ? post.gallery_images_info
             .split(";")
@@ -799,13 +818,10 @@ exports.getPosts = async (req, res) => {
             })
             .filter((img) => img.id)
         : [];
-
-      // Remove old fields from the response
       delete post.category_name;
       delete post.category_slug;
       delete post.tags_info;
       delete post.gallery_images_info;
-
       return { ...post, category, tags, gallery_images };
     });
 
@@ -1046,11 +1062,7 @@ exports.getPostByCategory = async (req, res) => {
       LIMIT ? OFFSET ?
     `;
 
-    const [posts] = await db.query(query, [
-      categoryId,
-      parsedPageSize,
-      offset,
-    ]);
+    const [posts] = await db.query(query, [categoryId, parsedPageSize, offset]);
 
     const countQuery = `
       SELECT COUNT(*) AS total
@@ -1122,10 +1134,9 @@ exports.getPostsByTag = async (req, res) => {
     const parsedPageSize = parseInt(pageSize);
 
     // Find the tag ID based on the slug
-    const [tagResult] = await db.query(
-      "SELECT id FROM tags WHERE slug = ?",
-      [slug]
-    );
+    const [tagResult] = await db.query("SELECT id FROM tags WHERE slug = ?", [
+      slug,
+    ]);
 
     if (tagResult.length === 0) {
       return res.status(404).json({ error: "Tag tidak ditemukan." });
@@ -1165,11 +1176,7 @@ exports.getPostsByTag = async (req, res) => {
       LIMIT ? OFFSET ?
     `;
 
-    const [posts] = await db.query(query, [
-      tagId,
-      parsedPageSize,
-      offset,
-    ]);
+    const [posts] = await db.query(query, [tagId, parsedPageSize, offset]);
 
     // Query to count total items for the tag
     const countQuery = `
@@ -1200,7 +1207,7 @@ exports.getPostsByTag = async (req, res) => {
             })
             .filter((tag) => tag.id)
         : [];
-      
+
       const gallery_images = post.gallery_images_info
         ? post.gallery_images_info
             .split(";")
@@ -1214,7 +1221,7 @@ exports.getPostsByTag = async (req, res) => {
             })
             .filter((img) => img.id)
         : [];
-        
+
       delete post.category_name;
       delete post.category_slug;
       delete post.tags_info;
