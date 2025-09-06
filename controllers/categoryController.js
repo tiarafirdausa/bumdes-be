@@ -1,5 +1,74 @@
 // controllers/categoryController.js
 const db = require("../models/db");
+const xlsx = require('xlsx');
+
+exports.importCategories = async (req, res) => {
+    try {
+        if (!req.file) {
+            return res.status(400).json({ error: "No file uploaded." });
+        }
+
+        const workbook = xlsx.readFile(req.file.path);
+        const sheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[sheetName];
+        const data = xlsx.utils.sheet_to_json(worksheet);
+
+        // Start a database transaction
+        await db.query("START TRANSACTION");
+
+        const importedCategories = [];
+        for (const row of data) {
+            const name = row.name;
+            let slug = row.slug || name.toLowerCase().replace(/\s+/g, "-");
+
+            if (!name) {
+                await db.query("ROLLBACK");
+                return res.status(400).json({ error: `Row missing a 'name' field.` });
+            }
+
+            // Check for existing category by name
+            const [existingCategoryByName] = await db.query(
+                "SELECT id FROM categories WHERE name = ?",
+                [name]
+            );
+            if (existingCategoryByName.length > 0) {
+                // Skip or handle as a conflict
+                console.log(`Skipping duplicate category: ${name}`);
+                continue;
+            }
+
+            // Check and make slug unique
+            const [existingCategoryBySlug] = await db.query(
+                "SELECT id FROM categories WHERE slug = ?",
+                [slug]
+            );
+            if (existingCategoryBySlug.length > 0) {
+                let suffix = 1;
+                let uniqueSlug = slug;
+                while (existingCategoryBySlug.length > 0) {
+                    uniqueSlug = `${slug}-${suffix}`;
+                    [existingCategoryBySlug] = await db.query("SELECT id FROM categories WHERE slug = ?", [uniqueSlug]);
+                    suffix++;
+                }
+                slug = uniqueSlug;
+            }
+
+            await db.query(
+                "INSERT INTO categories (name, slug) VALUES (?, ?)",
+                [name, slug]
+            );
+            importedCategories.push({ name, slug });
+        }
+
+        // Commit the transaction
+        await db.query("COMMIT");
+        res.status(201).json({ message: "Categories imported successfully.", count: importedCategories.length });
+    } catch (error) {
+        await db.query("ROLLBACK");
+        console.error("Error importing categories:", error);
+        res.status(500).json({ error: "Failed to import categories", details: error.message });
+    }
+};
 
 exports.createCategory = async (req, res) => {
   try {

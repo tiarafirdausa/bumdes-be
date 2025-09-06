@@ -103,14 +103,14 @@ exports.updateSettings = async (req, res) => {
       smtp_port,
       smtp_username,
       smtp_password,
-      clear_logo, // Pengaturan baru ditambahkan di sini
+      clear_logo,
       maps_url,
       address,
       phone,
       power,
       power_url,
       short_title,
-      email, 
+      email,
     } = req.body;
 
     const logoFile = req.files && req.files.logo ? req.files.logo[0] : null;
@@ -125,53 +125,55 @@ exports.updateSettings = async (req, res) => {
     connection = await db.getConnection();
     await connection.beginTransaction();
 
-    const updateSingleSetting = async (key, newValue, type) => {
+    const updateSingleSetting = async (group, key, newValue, type) => {
       const current = currentSettingsMap.get(key);
-      const oldValue = current
-        ? parseSettingValue(current.value, current.type)
-        : undefined;
       const valueToStore = serializeSettingValue(newValue, type);
 
-      if (newValue !== undefined && valueToStore !== current?.value) {
-        await connection.query(
-          "UPDATE settings SET `value` = ?, `type` = ? WHERE `key` = ?",
-          [valueToStore, type, key]
-        );
-      } else {
-        console.log(
-          `Setting ${key} value is same as old: '${oldValue}'. No update needed.`
-        );
+      if (newValue !== undefined) {
+        if (current) {
+          if (valueToStore !== current.value) {
+            await connection.query(
+              "UPDATE settings SET `value` = ?, `type` = ? WHERE `key` = ?",
+              [valueToStore, type, key]
+            );
+          }
+        } else {
+          await connection.query(
+            "INSERT INTO settings (`group`, `key`, `value`, `type`, `created_at`, `updated_at`) VALUES (?, ?, ?, ?, NOW(), NOW())",
+            [group, key, valueToStore, type]
+          );
+        }
       }
     };
 
-    await updateSingleSetting("site_title", site_title, "string");
-    await updateSingleSetting("site_description", site_description, "text");
-    await updateSingleSetting("maintenance_mode", maintenance_mode, "boolean");
-    await updateSingleSetting("meta_keywords", meta_keywords, "text");
-    await updateSingleSetting("meta_description", meta_description, "text");
-    await updateSingleSetting("mail_from_address", mail_from_address, "string");
-    await updateSingleSetting("mail_from_name", mail_from_name, "string");
-    await updateSingleSetting("smtp_host", smtp_host, "string");
-    await updateSingleSetting("smtp_port", smtp_port, "number");
-    await updateSingleSetting("smtp_username", smtp_username, "string");
-    await updateSingleSetting("smtp_password", smtp_password, "string"); 
+    await updateSingleSetting("general", "site_title", site_title, "string");
+    await updateSingleSetting("general", "site_description", site_description, "text");
+    await updateSingleSetting("general", "maintenance_mode", maintenance_mode, "boolean");
+    await updateSingleSetting("general", "maps_url", maps_url, "text");
+    await updateSingleSetting("general", "address", address, "text");
+    await updateSingleSetting("general", "phone", phone, "string");
+    await updateSingleSetting("general", "email", email, "string");
+    await updateSingleSetting("general", "power", power, "string");
+    await updateSingleSetting("general", "power_url", power_url, "text");
+    await updateSingleSetting("general", "short_title", short_title, "string");
 
-    await updateSingleSetting("maps_url", maps_url, "text");
-    await updateSingleSetting("address", address, "text");
-    await updateSingleSetting("phone", phone, "string");
-    await updateSingleSetting("email", email, "string");
-    await updateSingleSetting("power", power, "string");
-    await updateSingleSetting("power_url", power_url, "text");
-    await updateSingleSetting("short_title", short_title, "string");
+    await updateSingleSetting("seo", "meta_keywords", meta_keywords, "text");
+    await updateSingleSetting("seo", "meta_description", meta_description, "text");
+
+    await updateSingleSetting("mail", "mail_from_address", mail_from_address, "string");
+    await updateSingleSetting("mail", "mail_from_name", mail_from_name, "string");
+    await updateSingleSetting("mail", "smtp_host", smtp_host, "string");
+    await updateSingleSetting("mail", "smtp_port", smtp_port, "number");
+    await updateSingleSetting("mail", "smtp_username", smtp_username, "string");
+    await updateSingleSetting("mail", "smtp_password", smtp_password, "string");
 
     const currentLogoValue = currentSettingsMap.get("logo")?.value;
-
     if (logoFile) {
       const newLogoPath = `/uploads/settings/${logoFile.filename}`;
-      await updateSingleSetting("logo", newLogoPath, "image");
+      await updateSingleSetting("appearance", "logo", newLogoPath, "image");
       deleteOldImage(currentLogoValue);
     } else if (clear_logo === "true") {
-      await updateSingleSetting("logo", null, "image");
+      await updateSingleSetting("appearance", "logo", null, "image");
       deleteOldImage(currentLogoValue);
     }
 
