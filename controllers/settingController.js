@@ -111,6 +111,8 @@ exports.updateSettings = async (req, res) => {
       power_url,
       short_title,
       email,
+      theme_color,
+      theme_mode
     } = req.body;
 
     const logoFile = req.files && req.files.logo ? req.files.logo[0] : null;
@@ -167,6 +169,8 @@ exports.updateSettings = async (req, res) => {
     await updateSingleSetting("mail", "smtp_username", smtp_username, "string");
     await updateSingleSetting("mail", "smtp_password", smtp_password, "string");
 
+    await updateSingleSetting("appearance", "theme_color", theme_color, "string");
+    await updateSingleSetting("appearance", "theme_mode", theme_mode, "string");
     const currentLogoValue = currentSettingsMap.get("logo")?.value;
     if (logoFile) {
       const newLogoPath = `/uploads/settings/${logoFile.filename}`;

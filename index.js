@@ -25,7 +25,7 @@ const bannerRoute = require("./routes/bannerRoute")
 const linkRoutes = require("./routes/linkRoute");
 const authController = require("./controllers/authController");
 
-const generateCsrfToken = require("./middleware/csrfMiddleware");
+const apiKeyOrCsrf = require("./middleware/apiKeyOrCsrf");
 
 const app = express();
 const port = process.env.PORT;
@@ -53,12 +53,17 @@ app.use(
 );
 
 app.disable("x-powered-by");
-app.use(generateCsrfToken);
+app.use(apiKeyOrCsrf);
 app.use("/uploads", express.static(path.join(__dirname, "public", "uploads")));
 
 app.get("/csrf-token", (req, res) => {
-  res.json({ csrfToken: req.csrfToken });
+ if (req.header("X-API-Key") && req.header("X-API-Key") === process.env.INTERNAL_API_KEY) {
+    return res.json({ message: "API Key mode, CSRF tidak diperlukan" });
+  }
+  const csrfToken = req.cookies["_csrf"];
+  res.json({ csrfToken });
 });
+
 app.post("/api/auth/refresh-token", authController.refreshToken);
 
 app.use("/api", authRoute);

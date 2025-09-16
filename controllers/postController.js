@@ -940,7 +940,8 @@ exports.getPostBySlug = async (req, res) => {
         c.name AS category_name,
         c.slug AS category_slug,
         GROUP_CONCAT(DISTINCT t.id, ':', t.name, ':', t.slug ORDER BY t.name SEPARATOR ';') AS tags_info,
-        GROUP_CONCAT(DISTINCT pgi.id, ':', pgi.image_path, ':', IFNULL(pgi.alt_text, '') ORDER BY pgi.sort_order SEPARATOR ';') AS gallery_images_info
+        GROUP_CONCAT(DISTINCT pgi.id, ':', pgi.image_path, ':', IFNULL(pgi.alt_text, '') ORDER BY pgi.sort_order SEPARATOR ';') AS gallery_images_info,
+        (SELECT COUNT(*) FROM comments WHERE post_id = p.id AND status = 'approved') AS comment_count
       FROM
         posts p
       LEFT JOIN

@@ -47,10 +47,10 @@ const getReferenceSlugOrTitle = async (type, referenceId) => {
     const [rows] = await db.query(query, [referenceId]);
     if (rows.length > 0) {
       let finalSlug = rows[0][slugColumn];
-      if (type === "media") {
-        finalSlug = `media/${finalSlug}`;
+      if (type === "category") {
+        finalSlug = `kategori/${finalSlug}`;
       }  else if (type === "media_category") {
-        finalSlug = `media-kategori/${finalSlug}`; 
+        finalSlug = `media/${finalSlug}`; 
       } else if (type === "link") {
         finalSlug = finalSlug || `/link/${referenceId}`;
       }

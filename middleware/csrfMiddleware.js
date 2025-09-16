@@ -5,7 +5,7 @@ const generateCsrfToken = (req, res, next) => {
   const csrfExcludedRoutes = [
     "/api/auth/login",
     "/api/auth/logout",
-    "/api/auth/refresh-token"
+    "/api/auth/refresh-token",
   ];
 
   if (csrfExcludedRoutes.includes(req.path)) {
@@ -15,18 +15,14 @@ const generateCsrfToken = (req, res, next) => {
   let csrfTokenFromCookie = req.cookies["_csrf"];
   let csrfTokenFromHeader = req.headers["x-csrf-token"];
 
-  if (
-    req.method === "GET" ||
-    req.method === "HEAD" ||
-    req.method === "OPTIONS"
-  ) {
+  if (["GET", "HEAD", "OPTIONS"].includes(req.method)) {
     if (!csrfTokenFromCookie) {
       const newCsrfToken = crypto.randomBytes(32).toString("hex");
       res.cookie("_csrf", newCsrfToken, {
-        httpOnly: false,
+        httpOnly: true, 
         secure: process.env.NODE_ENV === "production",
-        maxAge: 1 * 60 * 60 * 1000,
-        sameSite: "Lax",
+        sameSite: process.env.NODE_ENV === "production" ? "Strict" : "Lax",
+        maxAge: 60 * 60 * 1000,
       });
       req.csrfToken = newCsrfToken;
     } else {
@@ -34,14 +30,9 @@ const generateCsrfToken = (req, res, next) => {
     }
     return next();
   }
-  if (
-    !csrfTokenFromHeader ||
-    !csrfTokenFromCookie ||
-    csrfTokenFromHeader !== csrfTokenFromCookie
-  ) {
-    return res
-      .status(403)
-      .json({ error: "CSRF token tidak valid atau tidak ada." });
+
+  if (!csrfTokenFromHeader || !csrfTokenFromCookie || csrfTokenFromHeader !== csrfTokenFromCookie) {
+    return res.status(403).json({ error: "CSRF token tidak valid atau tidak ada." });
   }
   next();
 };
