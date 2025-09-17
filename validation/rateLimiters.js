@@ -38,9 +38,23 @@ const forgotPasswordLimiter = rateLimit({
   headers: true,
 });
 
+const commentLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 menit
+  max: 5, // max 5 komentar per IP dalam 1 menit
+  message: {
+    error: 'Terlalu banyak komentar dari IP ini, silakan coba lagi setelah 1 menit.'
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (req, res) => {
+    res.status(429).json({ error: 'Terlalu banyak komentar. Silakan coba lagi nanti.' });
+  },
+});
+
 // Ekspor limiter agar bisa digunakan di file lain
 module.exports = {
   loginLimiter,
   registerLimiter,
   forgotPasswordLimiter,
+  commentLimiter
 };

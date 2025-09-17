@@ -2,7 +2,9 @@
 const express = require('express');
 const router = express.Router();
 const commentController = require('../controllers/commentController'); 
-router.post('/', commentController.addComment); 
+const { commentLimiter } = require('../validation/rateLimiters');
+
+router.post('/', commentLimiter, commentController.addComment); 
 router.get('/post/:postId', commentController.getCommentsByPostId); 
 router.get('/:slug', commentController.getCommentsByPostBySlug);
 router.get('/', commentController.getAllComments);
