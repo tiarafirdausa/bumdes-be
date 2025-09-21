@@ -39,8 +39,10 @@ app.use(cookieParser());
 //   xContentTypeOptions: false, 
 // }));
 
-const frontendUrlsString = process.env.FRONTEND_URLS;
-const allowedOrigins = frontendUrlsString ? frontendUrlsString.split(',') : [];
+const allowedOrigins = [
+    process.env.ADMIN_URL,
+    process.env.PUBLIC_URL
+].filter(Boolean);
 
 app.set('trust proxy', 1);
 app.use(
@@ -90,7 +92,7 @@ app.use((err, req, res, next) => {
   if (err.message === "CSRF token tidak valid atau tidak ada.") {
     return res
       .status(403)
-      .json({ error: "Forbidden: CSRF token tidak valid." });
+      .json({ error: "Sesi Anda telah berakhir. Silakan muat ulang halaman dan coba lagi." });
   }
   next(err);
 });

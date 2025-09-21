@@ -176,7 +176,7 @@ exports.forgotPassword = async (req, res) => {
         );
 
         const smtpConfig = await getEmailSettings();
-        const resetUrl = `${process.env.FRONTEND_URL}/reset-password?token=${resetToken}`;
+        const resetUrl = `${process.env.ADMIN_URL}/reset-password?token=${resetToken}`;
 
         const message = `
             <h1>Anda telah meminta reset password</h1>

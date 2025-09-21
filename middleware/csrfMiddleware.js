@@ -32,7 +32,7 @@ const generateCsrfToken = (req, res, next) => {
   }
 
   if (!csrfTokenFromHeader || !csrfTokenFromCookie || csrfTokenFromHeader !== csrfTokenFromCookie) {
-    return res.status(403).json({ error: "CSRF token tidak valid atau tidak ada." });
+    return res.status(403).json({ error: "Sesi Anda telah berakhir. Silakan muat ulang halaman dan coba lagi." });
   }
   next();
 };
