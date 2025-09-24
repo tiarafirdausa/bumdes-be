@@ -2,31 +2,33 @@
 const express = require("express");
 const router = express.Router();
 const userController = require("../controllers/userController"); 
-const authMiddleware = require("../middleware/authMiddleware");
 const { userProfileImageUpload } = require("../validation/configMulter");
 const { registerValidation, updateUserValidationRules } = require("../validation/authValidation"); 
+const { protect, authorize } = require("../middleware/authMiddleware");
 
-// Rute untuk membuat user baru (hanya admin)
 router.post(
   "/", 
-  // authMiddleware.protect,
-  // authMiddleware.authorize("admin"),
+  protect,
+  authorize("admin"),
   userProfileImageUpload.single("foto"),
   registerValidation,
   userController.createUser
 );
 
 router.get("/", 
-    // authMiddleware.protect, 
+    protect,
+  authorize("admin"), 
     userController.getUsers);
 
 router.get("/:id", 
-  // authMiddleware.protect, 
+  protect,
+  authorize("admin"),
   userController.getUserById);
 
 router.put(
   "/:id",
-  // authMiddleware.protect,
+  protect,
+  authorize("admin"),
   userProfileImageUpload.single("foto"),
   updateUserValidationRules,
   userController.updateUser
@@ -34,8 +36,8 @@ router.put(
 
 router.delete(
   "/:id",
-  // authMiddleware.protect,
-  // authMiddleware.authorize("admin"), 
+  protect,
+  authorize("admin"), 
   userController.deleteUser
 );
 
